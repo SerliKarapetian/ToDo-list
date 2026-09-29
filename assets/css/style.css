@@ -560,7 +560,10 @@ a {
   position: fixed;
   top: 20px;
   right: 20px;
-  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 18px;
   border-radius: var(--radius-md);
   color: #fff;
   font-size: 0.85rem;
@@ -573,11 +576,13 @@ a {
     transform 0.3s var(--ease),
     opacity 0.3s var(--ease);
   pointer-events: none;
+  overflow: hidden;
 }
 
 .notification.is-visible {
   transform: translateY(0) scale(1);
   opacity: 1;
+  pointer-events: auto;
 }
 
 .notification--success {
@@ -586,6 +591,59 @@ a {
 
 .notification--error {
   background: var(--danger);
+}
+
+.notification__message {
+  flex: 1;
+}
+
+.notification__action {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  transition: var(--transition);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notification__action:hover {
+  background: rgba(255, 255, 255, 0.32);
+  transform: translateY(-1px);
+}
+
+.notification__action:active {
+  transform: translateY(0);
+}
+
+.notification__action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Thin timer bar showing time left to undo */
+.notification__timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 3px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.55);
+  animation: toastTimer 5s linear forwards;
+}
+
+@keyframes toastTimer {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
 }
 
 /*Responsive*/
@@ -627,7 +685,11 @@ a {
     left: 12px;
     right: 12px;
     top: 12px;
-    text-align: center;
+  }
+
+  .notification__action {
+    font-size: 0.72rem;
+    padding: 5px 10px;
   }
 }
 
@@ -639,5 +701,9 @@ a {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+  .notification__timer {
+    animation: none;
+    width: 0;
   }
 }

@@ -11,10 +11,14 @@ const progressLabel = document.getElementById("progress-label");
 
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
+const UNDO_WINDOW = 5000; // 5s to undo a delete
 
 /* State */
 let tasks = [];
 let filter = "all"; // "all" | "active" | "completed"
+
+/* Pending delete (for undo) */
+let pendingDelete = null; // { task, index, timeoutId }
 
 /* Helpers */
 const uid = () =>
@@ -122,11 +126,48 @@ function toggleTask(id) {
   render();
 }
 
+/* Delete with undo window */
 function deleteTask(id) {
-  tasks = tasks.filter((t) => t.id !== id);
+  const index = tasks.findIndex((t) => t.id === id);
+  if (index === -1) return;
+
+  // If a previous delete is still pending, commit it now
+  commitPendingDelete();
+
+  const task = tasks[index];
+
+  // Soft-delete: remove from view immediately
+  tasks.splice(index, 1);
+  render();
+
+  // Hold in memory for the undo window
+  pendingDelete = {
+    task,
+    index,
+    timeoutId: setTimeout(commitPendingDelete, UNDO_WINDOW),
+  };
+
+  showUndoToast();
+}
+
+function commitPendingDelete() {
+  if (!pendingDelete) return;
+  clearTimeout(pendingDelete.timeoutId);
+  pendingDelete = null;
+  save(); // persist the deletion only now
+}
+
+function undoDelete() {
+  if (!pendingDelete) return;
+  clearTimeout(pendingDelete.timeoutId);
+
+  const { task, index } = pendingDelete;
+  tasks.splice(index, 0, task);
+  pendingDelete = null;
+
   save();
   render();
-  notify("Task deleted");
+  notify("Task restored");
 }
 
 function setFilter(next) {
@@ -139,17 +180,53 @@ function setFilter(next) {
   render();
 }
 
-/* Notification */
-function notify(message, type = "success") {
+/* Notification (supports optional action button + timer bar) */
+function notify(message, type = "success", action = null) {
   const el = document.createElement("div");
   el.className = `notification notification--${type}`;
-  el.textContent = message;
+  el.setAttribute("role", "status");
+
+  const msg = document.createElement("span");
+  msg.className = "notification__message";
+  msg.textContent = message;
+  el.appendChild(msg);
+
+  let duration = 2000;
+
+  if (action) {
+    duration = UNDO_WINDOW;
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "notification__action";
+    btn.textContent = action.label;
+    btn.addEventListener("click", () => {
+      action.onClick();
+      dismiss();
+    });
+    el.appendChild(btn);
+
+    const timer = document.createElement("span");
+    timer.className = "notification__timer";
+    el.appendChild(timer);
+  }
+
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("is-visible"));
-  setTimeout(() => {
+
+  function dismiss() {
     el.classList.remove("is-visible");
     setTimeout(() => el.remove(), 350);
-  }, 2000);
+  }
+
+  setTimeout(dismiss, duration);
+}
+
+function showUndoToast() {
+  notify("Task deleted", "success", {
+    label: "Undo",
+    onClick: undoDelete,
+  });
 }
 
 /* Events */
@@ -180,6 +257,27 @@ document
   .forEach((btn) =>
     btn.addEventListener("click", () => setFilter(btn.dataset.filter)),
   );
+
+/* Ctrl/Cmd + Z to undo last delete */
+document.addEventListener("keydown", (e) => {
+  if (
+    (e.ctrlKey || e.metaKey) &&
+    e.key.toLowerCase() === "z" &&
+    pendingDelete
+  ) {
+    e.preventDefault();
+    undoDelete();
+  }
+});
+
+/* Commit any pending delete before leaving the page */
+window.addEventListener("beforeunload", () => {
+  if (pendingDelete) {
+    clearTimeout(pendingDelete.timeoutId);
+    pendingDelete = null;
+    save();
+  }
+});
 
 /* Today label */
 todayLabel.textContent = new Date().toLocaleDateString(undefined, {
