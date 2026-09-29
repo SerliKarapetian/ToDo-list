@@ -563,29 +563,70 @@ a {
   text-decoration-thickness: 1.5px;
 }
 
-/* Delete button */
-.task__delete {
+/*Task row actions (edit + delete)*/
+.task__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.task__action {
   width: 32px;
   height: 32px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--text-dim);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   opacity: 0;
   transition: var(--transition);
   flex-shrink: 0;
 }
 
-.task:hover .task__delete,
-.task:focus-within .task__delete {
+.task:hover .task__action,
+.task:focus-within .task__action {
   opacity: 1;
 }
 
+.task__action:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+}
+
+/* Edit button — magenta on hover */
+.task__edit-btn:hover {
+  background: var(--magenta-soft);
+  color: var(--magenta);
+  transform: rotate(-8deg);
+}
+
+/* Delete button — red on hover */
 .task__delete:hover {
   background: rgba(239, 74, 107, 0.15);
   color: var(--danger);
   transform: rotate(8deg);
+}
+
+/*Inline edit input*/
+.task.is-editing {
+  cursor: default;
+}
+
+.task__edit {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 0.94rem;
+  color: var(--text);
+  background: var(--surface-inset);
+  border: 1.5px solid var(--magenta);
+  border-radius: var(--radius-sm);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--magenta-soft);
+  line-height: 1.4;
 }
 
 /*Empty state*/
@@ -812,8 +853,8 @@ body,
     padding: 8px;
   }
 
-  /* Always show delete on touch devices */
-  .task__delete {
+  /* Always show action btns on touch devices */
+  .task__action {
     opacity: 1;
   }
 

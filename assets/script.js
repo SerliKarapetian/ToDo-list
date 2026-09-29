@@ -13,12 +13,11 @@ const themeToggle = document.getElementById("theme-toggle");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
 const UNDO_WINDOW = 5000; // 5s to undo a delete
+const MAX_LENGTH = 100;
 
 /* State */
 let tasks = [];
 let filter = "all"; // "all" | "active" | "completed"
-
-/* Pending delete (for undo) */
 let pendingDelete = null; // { task, index, timeoutId }
 
 /* Helpers */
@@ -36,7 +35,6 @@ function load() {
   } catch {
     tasks = [];
   }
-  // Auto-remove tasks completed more than 1 week ago
   const now = Date.now();
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
 }
@@ -68,14 +66,28 @@ function render() {
     text.className = "task__text";
     text.textContent = task.text; // safe from XSS
 
+    // Row actions (edit + delete)
+    const actions = document.createElement("div");
+    actions.className = "task__actions";
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "task__action task__edit-btn";
+    edit.dataset.action = "edit";
+    edit.setAttribute("aria-label", "Edit task");
+    edit.title = "Edit";
+    edit.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "task__delete";
+    del.className = "task__action task__delete";
     del.dataset.action = "delete";
     del.setAttribute("aria-label", "Delete task");
+    del.title = "Delete";
     del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
 
-    li.append(check, text, del);
+    actions.append(edit, del);
+    li.append(check, text, actions);
     listEl.appendChild(li);
   });
 
@@ -87,7 +99,7 @@ function render() {
   progressFill.style.strokeDasharray = `${pct}, 100`;
   progressLabel.textContent = pct + "%";
 
-  // Empty state (contextual)
+  // Empty state
   emptyEl.hidden = list.length > 0;
   if (list.length === 0) {
     if (total === 0) {
@@ -127,21 +139,87 @@ function toggleTask(id) {
   render();
 }
 
-/* Delete with undo window */
+function updateTaskText(id, text) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  const trimmed = text.trim();
+  if (!trimmed || trimmed === task.text) return;
+  task.text = trimmed;
+  save();
+  render();
+  notify("Task updated");
+}
+
+/* ---------- Inline edit ---------- */
+function startEdit(li) {
+  if (li.classList.contains("is-editing")) return;
+  const id = li.dataset.id;
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+
+  const textEl = li.querySelector(".task__text");
+  const actions = li.querySelector(".task__actions");
+  if (!textEl) return;
+
+  li.classList.add("is-editing");
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "task__edit";
+  input.value = task.text;
+  input.maxLength = MAX_LENGTH;
+  input.setAttribute("aria-label", "Edit task");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+
+  textEl.replaceWith(input);
+  if (actions) actions.hidden = true;
+
+  input.focus();
+  const len = input.value.length;
+  input.setSelectionRange(len, len);
+
+  let done = false;
+
+  function commit() {
+    if (done) return;
+    done = true;
+    updateTaskText(id, input.value); // render() rebuilds the DOM
+  }
+
+  function cancel() {
+    if (done) return;
+    done = true;
+    li.classList.remove("is-editing");
+    if (actions) actions.hidden = false;
+    render();
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancel();
+    }
+  });
+
+  input.addEventListener("blur", () => setTimeout(commit, 0));
+  input.addEventListener("click", (e) => e.stopPropagation());
+}
+
+/* Delete with undo */
 function deleteTask(id) {
   const index = tasks.findIndex((t) => t.id === id);
   if (index === -1) return;
 
-  // If a previous delete is still pending, commit it now
   commitPendingDelete();
 
   const task = tasks[index];
-
-  // Soft-delete: remove from view immediately
   tasks.splice(index, 1);
   render();
 
-  // Hold in memory for the undo window
   pendingDelete = {
     task,
     index,
@@ -155,7 +233,7 @@ function commitPendingDelete() {
   if (!pendingDelete) return;
   clearTimeout(pendingDelete.timeoutId);
   pendingDelete = null;
-  save(); // persist the deletion only now
+  save();
 }
 
 function undoDelete() {
@@ -181,7 +259,7 @@ function setFilter(next) {
   render();
 }
 
-/* Notification (supports optional action button + timer bar) */
+/* Notification */
 function notify(message, type = "success", action = null) {
   const el = document.createElement("div");
   el.className = `notification notification--${type}`;
@@ -245,7 +323,6 @@ themeToggle.addEventListener("click", () => {
   applyTheme(current === "dark" ? "light" : "dark");
 });
 
-/* Follow system changes only if the user hasn't picked a theme */
 window
   .matchMedia("(prefers-color-scheme: light)")
   .addEventListener("change", (e) => {
@@ -262,18 +339,35 @@ composer.addEventListener("submit", (e) => {
 listEl.addEventListener("click", (e) => {
   const li = e.target.closest(".task");
   if (!li) return;
-  if (e.target.closest("[data-action='delete']")) deleteTask(li.dataset.id);
-  else toggleTask(li.dataset.id);
+
+  if (li.classList.contains("is-editing")) return;
+
+  const actionEl = e.target.closest("[data-action]");
+  if (actionEl) {
+    const action = actionEl.dataset.action;
+    if (action === "delete") deleteTask(li.dataset.id);
+    else if (action === "edit") startEdit(li);
+    return;
+  }
+
+  // Anywhere else in the row → toggle
+  toggleTask(li.dataset.id);
 });
 
 listEl.addEventListener("keydown", (e) => {
   const li = e.target.closest(".task");
   if (!li) return;
+  if (li.classList.contains("is-editing")) return;
+
   if (e.key === "Enter" || e.key === " ") {
     e.preventDefault();
     toggleTask(li.dataset.id);
+  } else if (e.key === "Delete") {
+    deleteTask(li.dataset.id);
+  } else if (e.key.toLowerCase() === "e") {
+    e.preventDefault();
+    startEdit(li);
   }
-  if (e.key === "Delete") deleteTask(li.dataset.id);
 });
 
 document
@@ -294,7 +388,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-/* Commit any pending delete before leaving the page */
 window.addEventListener("beforeunload", () => {
   if (pendingDelete) {
     clearTimeout(pendingDelete.timeoutId);
