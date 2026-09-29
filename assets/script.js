@@ -1,39 +1,59 @@
 const inputBox = document.getElementById("input-box");
 const listContainer = document.getElementById("list-container");
+const addBtn = document.getElementById("add-btn");
 
-function addTask(){
-    if(inputBox.value === ''){
-        alert("You must write something!");
-    }
-    else{
-        let li  = document.createElement("li");
-        li.innerHTML = inputBox.value;
-        listContainer.appendChild(li);
-        let span = document.createElement("span");
-        span.innerHTML = "\u00d7";
-        li.appendChild(span);
-    }
-    inputBox.value = "";
+function addTask() {
+  const taskText = inputBox.value.trim();
+  if (!taskText) {
+    alert("Please enter a task!");
+    return;
+  }
+  if (taskText.length > 100) {
+    alert("Task is too long (max 100 characters)!");
+    return;
+  }
+
+  const li = document.createElement("li");
+  li.textContent = taskText; // Use textContent for security
+  li.setAttribute("role", "listitem");
+
+  const span = document.createElement("span");
+  span.textContent = "\u00d7";
+  span.setAttribute("aria-label", "Delete task");
+  li.appendChild(span);
+
+  listContainer.appendChild(li);
+  inputBox.value = "";
+  saveData();
+}
+
+function handleTaskInteraction(e) {
+  if (e.target.tagName === "LI") {
+    e.target.classList.toggle("checked");
     saveData();
+  } else if (e.target.tagName === "SPAN") {
+    e.target.parentElement.remove();
+    saveData();
+  }
 }
 
-listContainer.addEventListener("click", function(e){
-    if(e.target.tagName === "LI"){
-        e.target.classList.toggle("checked");
-        saveData();
-    }
-    else if(e.target.tagName === "SPAN"){
-        e.target.parentElement.remove();
-        saveData();
-    }
-}, false);
-
-function saveData(){
-    localStorage.setItem("data", listContainer.innerHTML);
+function saveData() {
+  localStorage.setItem("data", listContainer.innerHTML);
 }
 
-function showTask(){
-    listContainer.innerHTML = localStorage.getItem("data");
+function loadTasks() {
+  const savedData = localStorage.getItem("data");
+  if (savedData) {
+    listContainer.innerHTML = savedData;
+  }
 }
 
-showTask();
+// Event Listeners
+addBtn.addEventListener("click", addTask);
+inputBox.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") addTask();
+});
+listContainer.addEventListener("click", handleTaskInteraction);
+
+// Initialize
+loadTasks();

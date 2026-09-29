@@ -1,27 +1,41 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>To-Do List</title>
-    <link rel="stylesheet" href="./assets/css/style.css">
-</head>
-<body>
+    <link rel="stylesheet" href="./assets/css/style.css" />
+  </head>
+  <body>
     <div class="container">
-        <div class="todo-list">
-            <h2> To-Do list <img src="./assets/images/todoicon.png"> </h2>
-            <div class="row">
-                <input type="text" id="input-box" placeholder="Add your text">
-                <button onclick="addTask()"> Add </button>
-            </div>
-            <ul id="list-container"> </ul>
+      <div class="todo-list">
+        <h2>
+          To-Do List <img src="./assets/images/todoicon.png" alt="To-Do Icon" />
+        </h2>
+        <div class="row">
+          <input
+            type="text"
+            id="input-box"
+            placeholder="Add your task"
+            maxlength="100"
+            aria-label="Add new task"
+          />
+          <button id="add-btn" aria-label="Add task">Add</button>
         </div>
+        <ul id="list-container" role="list" aria-label="Task list"></ul>
+      </div>
     </div>
     <div class="credits">
-        <p>
-          Open-source code by
-          <a href="https://github.com/SerliKarapetian/ToDo-list" target="_blank">Serli</a>
-        </p>
-      </div>
+      <p>
+        Open-source code by
+        <a
+          href="https://github.com/SerliKarapetian/ToDo-list"
+          target="_blank"
+          rel="noopener"
+          >Serli</a
+        >
+      </p>
+    </div>
     <script src="./assets/script.js"></script>
-</body>
+  </body>
 </html>
