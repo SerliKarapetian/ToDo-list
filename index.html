@@ -10,6 +10,22 @@
     />
     <title>To-Do · Organize your day</title>
 
+    <!-- Apply saved theme (or system preference) before paint to avoid FOUC -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("theme");
+          var prefersLight = window.matchMedia(
+            "(prefers-color-scheme: dark)",
+          ).matches;
+          document.documentElement.dataset.theme =
+            saved || (prefersLight ? "light" : "dark");
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -37,18 +53,31 @@
           </div>
         </div>
 
-        <div class="progress" aria-live="polite">
-          <svg viewBox="0 0 36 36" class="progress__ring" aria-hidden="true">
-            <circle class="progress__track" cx="18" cy="18" r="15.9" />
-            <circle
-              class="progress__fill"
-              id="progress-fill"
-              cx="18"
-              cy="18"
-              r="15.9"
-            />
-          </svg>
-          <span class="progress__label" id="progress-label">0%</span>
+        <div class="header__actions">
+          <button
+            type="button"
+            class="theme-toggle"
+            id="theme-toggle"
+            aria-label="Toggle theme"
+            title="Toggle theme"
+          >
+            <i class="fas fa-sun theme-toggle__sun" aria-hidden="true"></i>
+            <i class="fas fa-moon theme-toggle__moon" aria-hidden="true"></i>
+          </button>
+
+          <div class="progress" aria-live="polite">
+            <svg viewBox="0 0 36 36" class="progress__ring" aria-hidden="true">
+              <circle class="progress__track" cx="18" cy="18" r="15.9" />
+              <circle
+                class="progress__fill"
+                id="progress-fill"
+                cx="18"
+                cy="18"
+                r="15.9"
+              />
+            </svg>
+            <span class="progress__label" id="progress-label">0%</span>
+          </div>
         </div>
       </header>
 

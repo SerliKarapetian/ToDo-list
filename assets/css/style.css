@@ -1,5 +1,6 @@
-/*Tokens*/
-:root {
+/*Tokens - Dark (Default)*/
+:root,
+[data-theme="dark"] {
   --navy: #1b2137;
   --navy-2: #2a2f4d;
   --sage: #65766d;
@@ -17,14 +18,63 @@
 
   --danger: #ef4a6b;
 
+  /* Surfaces */
+  --card-bg: linear-gradient(180deg, #232844 0%, #2a2f4d 100%);
+  --surface-soft: rgba(255, 255, 255, 0.04);
+  --surface-hover: rgba(255, 255, 255, 0.07);
+  --surface-inset: rgba(0, 0, 0, 0.22);
+  --check-bg: rgba(255, 255, 255, 0.04);
+
+  /* Page background */
+  --page-bg:
+    radial-gradient(1200px 600px at 10% -10%, #2a2f4d 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #3a2a3d 0%, transparent 55%),
+    #1b2137;
+
+  --glow-opacity: 0.18;
+  --shadow-lg: 0 30px 70px -25px rgba(0, 0, 0, 0.55);
+
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 24px;
   --radius-pill: 999px;
 
-  --shadow-lg: 0 30px 70px -25px rgba(27, 33, 55, 0.65);
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --transition: all 0.25s var(--ease);
+}
+
+/*Tokens — Light*/
+[data-theme="light"] {
+  --navy: #f7f4ee;
+  --navy-2: #ffffff;
+  --sage: #5c7367;
+  --rose: #b76c7f;
+  --magenta: #c9266d;
+
+  --magenta-soft: rgba(201, 38, 109, 0.12);
+  --rose-soft: rgba(183, 108, 127, 0.14);
+  --line: rgba(27, 33, 55, 0.08);
+  --line-strong: rgba(27, 33, 55, 0.14);
+
+  --text: #1b2137;
+  --text-muted: #5b6479;
+  --text-dim: #8a93a6;
+
+  --danger: #d93a5c;
+
+  --card-bg: linear-gradient(180deg, #ffffff 0%, #fbf8f3 100%);
+  --surface-soft: rgba(27, 33, 55, 0.035);
+  --surface-hover: rgba(27, 33, 55, 0.06);
+  --surface-inset: rgba(27, 33, 55, 0.06);
+  --check-bg: #ffffff;
+
+  --page-bg:
+    radial-gradient(1200px 600px at 10% -10%, #fdf1e0 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #f7dfe6 0%, transparent 55%),
+    #f3efe6;
+
+  --glow-opacity: 0.1;
+  --shadow-lg: 0 30px 70px -25px rgba(27, 33, 55, 0.22);
 }
 
 /*Reset & Base*/
@@ -62,10 +112,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background:
-    radial-gradient(1200px 600px at 10% -10%, #2a2f4d 0%, transparent 60%),
-    radial-gradient(900px 500px at 110% 110%, #3a2a3d 0%, transparent 55%),
-    var(--navy);
+  background: var(--page-bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -101,7 +148,7 @@ a {
   max-width: 600px;
   height: 100%;
   max-height: 100%;
-  background: linear-gradient(180deg, #232844 0%, var(--navy-2) 100%);
+  background: var(--card-bg);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -120,8 +167,9 @@ a {
   width: 320px;
   height: 320px;
   background: radial-gradient(circle, var(--magenta) 0%, transparent 70%);
-  opacity: 0.18;
+  opacity: var(--glow-opacity);
   pointer-events: none;
+  transition: opacity 0.35s var(--ease);
 }
 
 @keyframes cardIn {
@@ -170,7 +218,7 @@ a {
   font-size: 1.3rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #fff;
+  color: var(--text);
   line-height: 1.2;
 }
 
@@ -178,6 +226,69 @@ a {
   font-size: 0.78rem;
   color: var(--text-dim);
   margin-top: 2px;
+}
+
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/*Theme toggle*/
+.theme-toggle {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  transition: var(--transition);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  transform: translateY(-1px) rotate(-8deg);
+}
+
+.theme-toggle:active {
+  transform: translateY(0) rotate(0);
+}
+
+.theme-toggle i {
+  position: absolute;
+  font-size: 0.9rem;
+  transition:
+    transform 0.4s var(--ease),
+    opacity 0.3s var(--ease);
+}
+
+/* Dark theme: show sun (click → switch to light) */
+[data-theme="dark"] .theme-toggle__sun,
+:root:not([data-theme]) .theme-toggle__sun {
+  transform: translateY(0) rotate(0);
+  opacity: 1;
+}
+[data-theme="dark"] .theme-toggle__moon,
+:root:not([data-theme]) .theme-toggle__moon {
+  transform: translateY(20px) rotate(90deg);
+  opacity: 0;
+}
+
+/* Light theme: show moon (click → switch to dark) */
+[data-theme="light"] .theme-toggle__sun {
+  transform: translateY(-20px) rotate(-90deg);
+  opacity: 0;
+}
+[data-theme="light"] .theme-toggle__moon {
+  transform: translateY(0) rotate(0);
+  opacity: 1;
 }
 
 /*Progress ring*/
@@ -191,13 +302,13 @@ a {
 .progress__ring {
   width: 100%;
   height: 100%;
-  transform: rotate(-90deg); /* start at 12 o'clock */
+  transform: rotate(-90deg);
   overflow: visible;
 }
 
 .progress__track {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.14);
+  stroke: var(--line-strong);
   stroke-width: 3.5;
 }
 
@@ -208,7 +319,7 @@ a {
   stroke-linecap: round;
   /* NOTE: no stroke-dasharray here — JS drives it via inline style */
   transition: stroke-dasharray 0.6s var(--ease);
-  filter: drop-shadow(0 0 4px rgba(218, 54, 125, 0.55));
+  filter: drop-shadow(0 0 4px var(--magenta-soft));
 }
 
 .progress__label {
@@ -218,7 +329,7 @@ a {
   place-items: center;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text);
   letter-spacing: -0.02em;
   pointer-events: none;
 }
@@ -227,7 +338,7 @@ a {
 .composer {
   display: flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--surface-inset);
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-pill);
   padding: 6px 6px 6px 18px;
@@ -297,7 +408,7 @@ a {
   display: flex;
   gap: 6px;
   padding: 4px;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--surface-inset);
   border-radius: var(--radius-pill);
   margin-bottom: 8px;
   flex-shrink: 0;
@@ -315,8 +426,8 @@ a {
 }
 
 .filter:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
 .filter.is-active {
@@ -375,7 +486,7 @@ a {
   align-items: center;
   gap: 12px;
   padding: 12px 12px 12px 14px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -396,18 +507,19 @@ a {
 }
 
 .task:hover {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--surface-hover);
   border-color: var(--line-strong);
   transform: translateY(-1px);
 }
 
-/* Custom checkbox (pure CSS) */
+/* Custom checkbox */
 .task__check {
   position: relative;
   width: 22px;
   height: 22px;
   border-radius: 50%;
   border: 2px solid var(--text-dim);
+  background: var(--check-bg);
   flex-shrink: 0;
   transition: var(--transition);
   display: grid;
@@ -504,7 +616,7 @@ a {
 .empty__title {
   font-size: 1.05rem;
   font-weight: 700;
-  color: #fff;
+  color: var(--text);
   margin-bottom: 4px;
 }
 
@@ -646,6 +758,25 @@ a {
   }
 }
 
+/*Smooth theme transitions*/
+body,
+.card,
+.task,
+.composer,
+.filters,
+.notification,
+.theme-toggle,
+.hint,
+.credits,
+.empty__art,
+.filter,
+.task__check {
+  transition:
+    background-color 0.35s var(--ease),
+    border-color 0.35s var(--ease),
+    color 0.35s var(--ease);
+}
+
 /*Responsive*/
 @media (max-width: 600px) {
   body {
@@ -664,6 +795,11 @@ a {
 
   .brand h1 {
     font-size: 1.15rem;
+  }
+
+  .theme-toggle {
+    width: 38px;
+    height: 38px;
   }
 
   .progress {

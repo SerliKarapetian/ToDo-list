@@ -8,6 +8,7 @@ const emptyText = document.getElementById("empty-text");
 const todayLabel = document.getElementById("today-label");
 const progressFill = document.getElementById("progress-fill");
 const progressLabel = document.getElementById("progress-label");
+const themeToggle = document.getElementById("theme-toggle");
 
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
@@ -228,6 +229,29 @@ function showUndoToast() {
     onClick: undoDelete,
   });
 }
+
+/* Theme */
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {
+    /* ignore */
+  }
+}
+
+themeToggle.addEventListener("click", () => {
+  const current = document.documentElement.dataset.theme || "dark";
+  applyTheme(current === "dark" ? "light" : "dark");
+});
+
+/* Follow system changes only if the user hasn't picked a theme */
+window
+  .matchMedia("(prefers-color-scheme: light)")
+  .addEventListener("change", (e) => {
+    if (localStorage.getItem("theme")) return;
+    applyTheme(e.matches ? "light" : "dark");
+  });
 
 /* Events */
 composer.addEventListener("submit", (e) => {
