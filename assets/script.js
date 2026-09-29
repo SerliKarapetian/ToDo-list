@@ -1,116 +1,194 @@
+/* Elements */
+const composer = document.getElementById("composer");
 const inputBox = document.getElementById("input-box");
-const listContainer = document.getElementById("list-container");
-const addBtn = document.getElementById("add-btn");
-const taskCountEl = document.getElementById("task-count");
+const listEl = document.getElementById("list-container");
+const emptyEl = document.getElementById("empty-state");
+const emptyTitle = document.getElementById("empty-title");
+const emptyText = document.getElementById("empty-text");
+const todayLabel = document.getElementById("today-label");
+const progressFill = document.getElementById("progress-fill");
+const progressLabel = document.getElementById("progress-label");
 
-function addTask() {
-  const taskText = inputBox.value.trim();
-  if (!taskText) {
-    showNotification("Please enter a task!", "error");
-    return;
+const STORAGE_KEY = "todos";
+const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
+
+/* State */
+let tasks = [];
+let filter = "all"; // "all" | "active" | "completed"
+
+/* Helpers */
+const uid = () =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    tasks = raw ? JSON.parse(raw) : [];
+  } catch {
+    tasks = [];
   }
-  if (taskText.length > 100) {
-    showNotification("Task is too long (max 100 characters)!", "error");
-    return;
-  }
-
-  const li = document.createElement("li");
-  li.textContent = taskText;
-  li.setAttribute("role", "listitem");
-
-  const span = document.createElement("span");
-  span.textContent = "\u00d7";
-  span.setAttribute("aria-label", "Delete task");
-  li.appendChild(span);
-
-  listContainer.appendChild(li);
-  inputBox.value = "";
-  saveData();
-  updateTaskCount();
-  showNotification("Task added!", "success");
+  // Auto-remove tasks completed more than 1 week ago
+  const now = Date.now();
+  tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
 }
 
-function handleTaskInteraction(e) {
-  if (e.target.tagName === "LI") {
-    e.target.classList.toggle("checked");
-    saveData();
-    updateTaskCount();
-  } else if (e.target.tagName === "SPAN") {
-    e.target.parentElement.remove();
-    saveData();
-    updateTaskCount();
-    showNotification("Task deleted!", "success");
-  }
+/* Rendering */
+function visibleTasks() {
+  if (filter === "active") return tasks.filter((t) => !t.done);
+  if (filter === "completed") return tasks.filter((t) => t.done);
+  return tasks;
 }
 
-function saveData() {
-  localStorage.setItem("data", listContainer.innerHTML);
-}
+function render() {
+  const list = visibleTasks();
+  listEl.innerHTML = "";
 
-function loadTasks() {
-  const savedData = localStorage.getItem("data");
-  if (savedData) {
-    listContainer.innerHTML = savedData;
-  }
-  updateTaskCount();
-}
+  list.forEach((task) => {
+    const li = document.createElement("li");
+    li.className = "task" + (task.done ? " checked" : "");
+    li.dataset.id = task.id;
+    li.tabIndex = 0;
+    li.setAttribute("role", "listitem");
+    li.setAttribute("aria-checked", String(task.done));
 
-function updateTaskCount() {
-  const taskCount = listContainer.querySelectorAll("li:not(.checked)").length;
-  taskCountEl.textContent = taskCount;
-}
+    const check = document.createElement("span");
+    check.className = "task__check";
+    check.setAttribute("aria-hidden", "true");
 
-function showNotification(message, type) {
-  const notification = document.createElement("div");
-  notification.className = `notification notification--${type}`;
-  notification.textContent = message;
-  document.body.appendChild(notification);
+    const text = document.createElement("span");
+    text.className = "task__text";
+    text.textContent = task.text; // safe from XSS
 
-  requestAnimationFrame(() => {
-    notification.style.transform = "translateX(0)";
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "task__delete";
+    del.dataset.action = "delete";
+    del.setAttribute("aria-label", "Delete task");
+    del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+
+    li.append(check, text, del);
+    listEl.appendChild(li);
   });
 
+  // Progress ring
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.done).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
+  progressFill.style.strokeDasharray = `${pct}, 100`;
+  progressLabel.textContent = pct + "%";
+
+  // Empty state (contextual)
+  emptyEl.hidden = list.length > 0;
+  if (list.length === 0) {
+    if (total === 0) {
+      emptyTitle.textContent = "All clear!";
+      emptyText.textContent = "Add your first task above.";
+    } else if (filter === "active") {
+      emptyTitle.textContent = "No active tasks 🎉";
+      emptyText.textContent = "Everything is done. Enjoy your day!";
+    } else {
+      emptyTitle.textContent = "Nothing done yet";
+      emptyText.textContent = "Check off a task to see it here.";
+    }
+  }
+}
+
+/* Actions */
+function addTask() {
+  const text = inputBox.value.trim();
+  if (!text) {
+    notify("Please enter a task", "error");
+    inputBox.focus();
+    return;
+  }
+  tasks.unshift({ id: uid(), text, done: false, completedAt: null });
+  inputBox.value = "";
+  save();
+  render();
+  notify("Task added");
+}
+
+function toggleTask(id) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.done = !task.done;
+  task.completedAt = task.done ? Date.now() : null;
+  save();
+  render();
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter((t) => t.id !== id);
+  save();
+  render();
+  notify("Task deleted");
+}
+
+function setFilter(next) {
+  filter = next;
+  document
+    .querySelectorAll(".filter")
+    .forEach((b) =>
+      b.classList.toggle("is-active", b.dataset.filter === filter),
+    );
+  render();
+}
+
+/* Notification */
+function notify(message, type = "success") {
+  const el = document.createElement("div");
+  el.className = `notification notification--${type}`;
+  el.textContent = message;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add("is-visible"));
   setTimeout(() => {
-    notification.style.transform = "translateX(100%)";
-    setTimeout(() => {
-      if (notification.parentNode) {
-        notification.parentNode.removeChild(notification);
-      }
-    }, 300);
+    el.classList.remove("is-visible");
+    setTimeout(() => el.remove(), 350);
   }, 2000);
 }
 
-// Event Listeners
-addBtn.addEventListener("click", addTask);
-inputBox.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") addTask();
+/* Events */
+composer.addEventListener("submit", (e) => {
+  e.preventDefault();
+  addTask();
 });
-listContainer.addEventListener("click", handleTaskInteraction);
 
-// Initialize
-loadTasks();
+listEl.addEventListener("click", (e) => {
+  const li = e.target.closest(".task");
+  if (!li) return;
+  if (e.target.closest("[data-action='delete']")) deleteTask(li.dataset.id);
+  else toggleTask(li.dataset.id);
+});
 
-// Add notification styles
-const style = document.createElement("style");
-style.textContent = `
-  .notification {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 12px 24px;
-    border-radius: 8px;
-    color: #fff;
-    font-size: 0.9rem;
-    font-weight: 500;
-    z-index: 1000;
-    transform: translateX(100%);
-    transition: transform 0.3s ease;
+listEl.addEventListener("keydown", (e) => {
+  const li = e.target.closest(".task");
+  if (!li) return;
+  if (e.key === "Enter" || e.key === " ") {
+    e.preventDefault();
+    toggleTask(li.dataset.id);
   }
-  .notification--success {
-    background: #28a745;
-  }
-  .notification--error {
-    background: #dc3545;
-  }
-`;
-document.head.appendChild(style);
+  if (e.key === "Delete") deleteTask(li.dataset.id);
+});
+
+document
+  .querySelectorAll(".filter")
+  .forEach((btn) =>
+    btn.addEventListener("click", () => setFilter(btn.dataset.filter)),
+  );
+
+/* Today label */
+todayLabel.textContent = new Date().toLocaleDateString(undefined, {
+  weekday: "long",
+  month: "short",
+  day: "numeric",
+});
+
+/* Init */
+load();
+render();
+inputBox.focus();
