@@ -31,6 +31,9 @@ let selectedId = null;
 let openPopover = null;
 let leavingIds = new Set();
 
+/* Drag state */
+let dragging = null; // { id, li, startY, currentY, pointerId, ghost }
+
 /* Date helpers */
 function todayISO() {
   const d = new Date();
@@ -113,8 +116,10 @@ function load() {
   }
   const now = Date.now();
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
-  tasks.forEach((t) => {
+  // Migration: ensure each task has dueAt and order fields.
+  tasks.forEach((t, i) => {
     if (!("dueAt" in t)) t.dueAt = null;
+    if (typeof t.order !== "number") t.order = i;
   });
 }
 
@@ -184,13 +189,23 @@ function visibleTasks() {
     list = [...list].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   } else if (filter === "active") {
     list = list.filter((t) => !t.done);
+    list = [...list].sort((a, b) => a.order - b.order);
   } else if (filter === "completed") {
     list = list.filter((t) => t.done);
+    list = [...list].sort((a, b) => a.order - b.order);
+  } else {
+    // "all" — preserve manual order
+    list = [...list].sort((a, b) => a.order - b.order);
   }
 
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
 
   return { list, tokens };
+}
+
+/* Whether manual reordering is currently allowed */
+function canReorder() {
+  return filter === "all" && !query;
 }
 
 /* Row builder */
@@ -203,6 +218,17 @@ function buildTaskRow(task, tokens) {
   li.tabIndex = 0;
   li.setAttribute("role", "listitem");
   li.setAttribute("aria-checked", String(task.done));
+
+  // Drag handle — only rendered when reordering is allowed
+  if (canReorder()) {
+    const grip = document.createElement("span");
+    grip.className = "task__grip";
+    grip.setAttribute("aria-hidden", "true");
+    grip.title = "Drag to reorder";
+    grip.innerHTML = '<i class="fas fa-grip-vertical"></i>';
+    grip.addEventListener("pointerdown", (e) => startDrag(e, li, task.id));
+    li.appendChild(grip);
+  }
 
   const check = document.createElement("span");
   check.className = "task__check";
@@ -279,21 +305,16 @@ function buildTaskRow(task, tokens) {
 
 /* Update an existing row in place */
 function updateTaskRow(li, task, tokens) {
-  // checked state
   li.classList.toggle("checked", task.done);
   li.setAttribute("aria-checked", String(task.done));
-
-  // selected state
   li.classList.toggle("is-selected", task.id === selectedId);
 
-  // text
   const textEl = li.querySelector(".task__text");
   if (textEl) {
     textEl.innerHTML = "";
     textEl.appendChild(highlight(task.text, tokens));
   }
 
-  // due chip
   const slot = li.querySelector(".task__slot");
   if (slot) {
     const existingChip = slot.querySelector(".task__due");
@@ -324,7 +345,6 @@ function updateTaskRow(li, task, tokens) {
     }
   }
 
-  // update date button aria-label
   const dateBtn = li.querySelector('[data-action="date"]');
   if (dateBtn) {
     dateBtn.setAttribute(
@@ -338,35 +358,32 @@ function updateTaskRow(li, task, tokens) {
 function render() {
   const { list, tokens } = visibleTasks();
 
-  // Build a Set of desired ids for O(1) lookups
   const desiredIds = new Set(list.map((t) => t.id));
 
-  // 1. Remove rows whose tasks are no longer visible
   [...listEl.children].forEach((li) => {
-    if (!desiredIds.has(li.dataset.id)) {
-      li.remove();
-    }
+    if (!desiredIds.has(li.dataset.id)) li.remove();
   });
 
-  // 2. Walk the desired list in order. Reuse existing rows in place,
-  //    create only genuinely new ones (with entry animation).
   list.forEach((task, index) => {
     let li = listEl.querySelector(`.task[data-id="${task.id}"]`);
 
     if (li) {
-      updateTaskRow(li, task, tokens);
+      // If reordering is enabled and this row doesn't have a grip yet,
+      // it means we switched into "all" from another filter — rebuild.
+      if (canReorder() && !li.querySelector(".task__grip")) {
+        const fresh = buildTaskRow(task, tokens);
+        li.replaceWith(fresh);
+        li = fresh;
+      } else {
+        updateTaskRow(li, task, tokens);
+      }
     } else {
       li = buildTaskRow(task, tokens);
-      if (!leavingIds.has(task.id)) {
-        li.classList.add("task--enter");
-      }
+      if (!leavingIds.has(task.id)) li.classList.add("task--enter");
     }
 
-    // Ensure the row is at the correct position
     const currentAtIndex = listEl.children[index];
-    if (currentAtIndex !== li) {
-      listEl.insertBefore(li, currentAtIndex || null);
-    }
+    if (currentAtIndex !== li) listEl.insertBefore(li, currentAtIndex || null);
   });
 
   updateProgress();
@@ -469,6 +486,155 @@ function leaveRow(li, onDone) {
   };
 }
 
+/* ---------- Drag & drop reordering ---------- */
+function startDrag(e, li, id) {
+  if (!canReorder()) return;
+  if (e.button !== undefined && e.button !== 0) return; // left-click only
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const rect = li.getBoundingClientRect();
+
+  // Ghost element — a visual clone that follows the pointer.
+  const ghost = li.cloneNode(true);
+  ghost.classList.add("task--ghost");
+  ghost.style.width = rect.width + "px";
+  ghost.style.height = rect.height + "px";
+  ghost.style.left = rect.left + "px";
+  ghost.style.top = rect.top + "px";
+  document.body.appendChild(ghost);
+
+  // Placeholder line — a drop indicator positioned between rows.
+  const indicator = document.createElement("div");
+  indicator.className = "drop-indicator";
+  document.body.appendChild(indicator);
+
+  li.classList.add("task--dragging");
+
+  dragging = {
+    id,
+    li,
+    ghost,
+    indicator,
+    startY: e.clientY,
+    offsetY: e.clientY - rect.top,
+    pointerId: e.pointerId,
+  };
+
+  document.body.classList.add("is-dragging");
+
+  // Listen at document level so the drag continues off-row.
+  document.addEventListener("pointermove", onDragMove);
+  document.addEventListener("pointerup", onDragEnd);
+  document.addEventListener("pointercancel", onDragEnd);
+
+  try {
+    li.setPointerCapture?.(e.pointerId);
+  } catch {}
+}
+
+function onDragMove(e) {
+  if (!dragging) return;
+  const { ghost, indicator, offsetY } = dragging;
+  const y = e.clientY;
+
+  ghost.style.top = y - offsetY + "px";
+
+  // Compute the target insertion index based on pointer position
+  // relative to the visible rows (excluding the dragged row itself).
+  const rows = [...listEl.querySelectorAll(".task:not(.task--dragging)")];
+  let insertBefore = rows.length;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i].getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    if (y < mid) {
+      insertBefore = i;
+      break;
+    }
+  }
+
+  // Position the indicator line accordingly.
+  const rect = listEl.getBoundingClientRect();
+  let lineY;
+  if (insertBefore === 0) {
+    lineY = rows.length
+      ? rows[0].getBoundingClientRect().top - 4
+      : listEl.getBoundingClientRect().top;
+  } else if (insertBefore >= rows.length) {
+    lineY = rows.length
+      ? rows[rows.length - 1].getBoundingClientRect().bottom + 4
+      : listEl.getBoundingClientRect().bottom;
+  } else {
+    lineY = rows[insertBefore].getBoundingClientRect().top - 4;
+  }
+
+  indicator.style.left = rect.left + 8 + "px";
+  indicator.style.width = rect.width - 16 + "px";
+  indicator.style.top = lineY + "px";
+  indicator.classList.add("is-visible");
+
+  dragging.targetIndex = insertBefore;
+}
+
+function onDragEnd() {
+  if (!dragging) return;
+
+  document.removeEventListener("pointermove", onDragMove);
+  document.removeEventListener("pointerup", onDragEnd);
+  document.removeEventListener("pointercancel", onDragEnd);
+
+  const { id, ghost, indicator, targetIndex } = dragging;
+  ghost.remove();
+  indicator.remove();
+  document.body.classList.remove("is-dragging");
+
+  const li = listEl.querySelector(`.task[data-id="${id}"]`);
+  li?.classList.remove("task--dragging");
+
+  if (typeof targetIndex === "number") {
+    reorderTask(id, targetIndex);
+  }
+
+  dragging = null;
+}
+
+function reorderTask(id, targetIndex) {
+  // Work on the currently visible list (which is what the user sees).
+  const { list } = visibleTasks();
+  const fromIndex = list.findIndex((t) => t.id === id);
+  if (fromIndex === -1) return;
+
+  // If we're moving down, adjust for the removal of the dragged row.
+  let to = targetIndex;
+  if (to > fromIndex) to -= 1;
+  if (to === fromIndex) return;
+
+  // Reorder within the visible list, then write back order values to
+  // the master array. Tasks not currently visible keep their relative
+  // order.
+  const reordered = [...list];
+  const [moved] = reordered.splice(fromIndex, 1);
+  reordered.splice(to, 0, moved);
+
+  // Assign new order values to the visible tasks in their new sequence.
+  reordered.forEach((t, i) => {
+    const task = tasks.find((x) => x.id === t.id);
+    if (task) task.order = i;
+  });
+
+  // For any tasks not visible in this filter, push their order after
+  // the visible ones so nothing collides.
+  const visibleIds = new Set(reordered.map((t) => t.id));
+  let tail = reordered.length;
+  tasks.forEach((t) => {
+    if (!visibleIds.has(t.id)) t.order = tail++;
+  });
+
+  save();
+  render();
+}
+
 /* Actions */
 function addTask() {
   const text = inputBox.value.trim();
@@ -477,12 +643,17 @@ function addTask() {
     inputBox.focus();
     return;
   }
+  const minOrder = tasks.reduce(
+    (min, t) => (t.order < min ? t.order : min),
+    tasks.length,
+  );
   tasks.unshift({
     id: uid(),
     text,
     done: false,
     completedAt: null,
     dueAt: null,
+    order: minOrder - 1,
   });
   inputBox.value = "";
   save();
@@ -507,8 +678,6 @@ function toggleTask(id) {
       return;
     }
 
-    // Update the row's visuals immediately so the tick lands before
-    // the row starts moving.
     li.classList.add("checked");
     li.setAttribute("aria-checked", "true");
     updateProgress();
@@ -518,16 +687,12 @@ function toggleTask(id) {
     requestAnimationFrame(() => {
       leaveRow(li, () => {
         leavingIds.delete(id);
-        // Remove this row from the DOM directly instead of a full
-        // render — no flicker for the other rows.
         li.remove();
         updateProgress();
-        // Update empty state in case this was the last visible row
         updateEmptyState(listEl.children.length);
       });
     });
   } else {
-    // Update the single row in place — no list re-render needed
     const li = listEl.querySelector(`.task[data-id="${id}"]`);
     if (li) {
       li.classList.toggle("checked", task.done);
@@ -603,15 +768,10 @@ function startEdit(li) {
     if (finished) return;
     finished = true;
 
-    // 1. Blur first so focus does not fall back to the <li>, which
-    //    would trigger the list's focusin handler and re-select the
-    //    row we are about to deselect.
+    // Blur first so focus does not fall back to the <li>
     input.blur();
-
-    // 2. Deselect the task.
     selectedId = null;
 
-    // 3. If saving, update the task text (only if it actually changed).
     if (shouldPersist) {
       const trimmed = input.value.trim();
       const t = tasks.find((x) => x.id === id);
@@ -622,8 +782,6 @@ function startEdit(li) {
       }
     }
 
-    // 4. Rebuild this row in place. This always removes the textarea
-    //    and restores read mode, whether or not the text changed.
     li.classList.remove("is-editing");
     const current = tasks.find((x) => x.id === id);
     if (current) {
@@ -632,8 +790,6 @@ function startEdit(li) {
     } else {
       render();
     }
-
-    // 5. Refresh the progress ring.
     updateProgress();
   }
 
@@ -984,6 +1140,8 @@ listEl.addEventListener("click", (e) => {
   if (li.classList.contains("is-editing")) return;
   if (li.classList.contains("is-leaving")) return;
   if (e.target.closest("[data-action]")) return;
+  // Ignore clicks on the drag handle — they don't toggle the task.
+  if (e.target.closest(".task__grip")) return;
 
   selectTask(li.dataset.id, { scroll: false });
   toggleTask(li.dataset.id);

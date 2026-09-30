@@ -723,6 +723,40 @@ a {
   font-weight: 600;
 }
 
+/* Drag handle */
+.task__grip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 30px;
+  flex-shrink: 0;
+  margin-left: -4px;
+  margin-right: -4px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: grab;
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--ease),
+    color 0.2s var(--ease);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task:hover .task__grip,
+.task.is-selected .task__grip {
+  opacity: 1;
+}
+
+.task__grip:hover {
+  color: var(--magenta);
+}
+
+.task__grip:active {
+  cursor: grabbing;
+}
+
 /* Right slot — chip stays visible, actions
    expand beside it on hover */
 .task__slot {
@@ -843,6 +877,84 @@ a {
   background: rgba(239, 74, 107, 0.15);
   color: var(--danger);
   transform: rotate(8deg);
+}
+
+/* Drag state */
+body.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.is-dragging * {
+  cursor: grabbing !important;
+}
+
+/* The source row stays in place as a dashed placeholder */
+.task.task--dragging {
+  opacity: 0.35;
+  background: var(--surface-hover);
+  border-style: dashed;
+}
+
+/* Ghost — a floating clone that follows the pointer */
+.task--ghost {
+  position: fixed;
+  z-index: 1300;
+  pointer-events: none;
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--magenta);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transform: rotate(-1.5deg);
+  opacity: 0.95;
+}
+
+.task--ghost .task__grip {
+  opacity: 1;
+  color: var(--magenta);
+}
+
+/* Drop indicator — thin magenta line between rows */
+.drop-indicator {
+  position: fixed;
+  height: 2px;
+  background: var(--magenta);
+  border-radius: 2px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1290;
+  transition: opacity 0.12s var(--ease);
+  box-shadow:
+    0 0 8px var(--magenta),
+    0 0 0 1px var(--magenta-soft);
+}
+
+.drop-indicator.is-visible {
+  opacity: 1;
+}
+
+.drop-indicator::before,
+.drop-indicator::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--magenta);
+  transform: translateY(-50%);
+  box-shadow: 0 0 6px var(--magenta);
+}
+
+.drop-indicator::before {
+  left: -4px;
+}
+
+.drop-indicator::after {
+  right: -4px;
 }
 
 /* Inline edit */
@@ -1369,6 +1481,11 @@ body,
     opacity: 1;
   }
 
+  /* Grip always visible on touch */
+  .task__grip {
+    opacity: 1;
+  }
+
   .task__due {
     font-size: 0.68rem;
     padding: 2px 7px;
@@ -1414,5 +1531,10 @@ body,
   /* Skip the leave delay animation, just remove instantly */
   .task.is-leaving {
     display: none;
+  }
+
+  /* No ghost tilt for motion-sensitive users */
+  .task--ghost {
+    transform: none;
   }
 }
