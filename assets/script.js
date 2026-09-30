@@ -19,7 +19,7 @@ const searchBtn = document.getElementById("search-btn");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
-const LEAVE_DELAY = 2500;
+const LEAVE_DURATION = 550; // total ms for fade + slide + collapse
 const MAX_LENGTH = 100;
 
 /* State */
@@ -29,7 +29,7 @@ let query = "";
 let pendingDelete = null;
 let selectedId = null;
 let openPopover = null;
-let pendingLeaveIds = new Set();
+let leavingIds = new Set();
 
 /* Date helpers */
 function todayISO() {
@@ -190,134 +190,283 @@ function visibleTasks() {
 
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
 
-  if (pendingLeaveIds.size) {
-    for (const id of pendingLeaveIds) {
-      const t = tasks.find((x) => x.id === id);
-      if (t && !list.find((x) => x.id === id)) list.push(t);
-    }
-  }
-
   return { list, tokens };
 }
 
-/* Rendering */
-function render() {
-  const { list, tokens } = visibleTasks();
-  listEl.innerHTML = "";
+/* Row builder */
+function buildTaskRow(task, tokens) {
+  const li = document.createElement("li");
+  li.className = "task";
+  if (task.done) li.classList.add("checked");
+  if (task.id === selectedId) li.classList.add("is-selected");
+  li.dataset.id = task.id;
+  li.tabIndex = 0;
+  li.setAttribute("role", "listitem");
+  li.setAttribute("aria-checked", String(task.done));
 
-  list.forEach((task) => {
-    const li = document.createElement("li");
-    li.className = "task" + (task.done ? " checked" : "");
-    if (task.id === selectedId) li.classList.add("is-selected");
-    if (pendingLeaveIds.has(task.id)) li.classList.add("is-leaving");
-    li.dataset.id = task.id;
-    li.tabIndex = 0;
-    li.setAttribute("role", "listitem");
-    li.setAttribute("aria-checked", String(task.done));
+  const check = document.createElement("span");
+  check.className = "task__check";
+  check.setAttribute("aria-hidden", "true");
 
-    const check = document.createElement("span");
-    check.className = "task__check";
-    check.setAttribute("aria-hidden", "true");
+  const text = document.createElement("span");
+  text.className = "task__text";
+  text.appendChild(highlight(task.text, tokens));
 
-    const text = document.createElement("span");
-    text.className = "task__text";
-    text.appendChild(highlight(task.text, tokens));
+  const slot = document.createElement("div");
+  slot.className = "task__slot";
 
-    const slot = document.createElement("div");
-    slot.className = "task__slot";
+  if (task.dueAt) {
+    const due = document.createElement("span");
+    due.className = "task__due " + dueClass(task.dueAt);
+    const iconCls =
+      diffDays(task.dueAt) < 0 ? "fa-triangle-exclamation" : "fa-calendar-day";
+    due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+    due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+    slot.appendChild(due);
+  }
 
+  const actions = document.createElement("div");
+  actions.className = "task__actions";
+
+  const dateBtn = document.createElement("button");
+  dateBtn.type = "button";
+  dateBtn.className = "task__action task__date-btn";
+  dateBtn.dataset.action = "date";
+  dateBtn.setAttribute(
+    "aria-label",
+    task.dueAt ? "Change due date" : "Set due date",
+  );
+  dateBtn.title = "Set due date (D)";
+  dateBtn.innerHTML = '<i class="far fa-calendar" aria-hidden="true"></i>';
+  dateBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openDatePopover(dateBtn, task.id);
+  });
+
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "task__action task__edit-btn";
+  edit.dataset.action = "edit";
+  edit.setAttribute("aria-label", "Edit task");
+  edit.title = "Edit (E)";
+  edit.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+  edit.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startEdit(li);
+  });
+
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "task__action task__delete";
+  del.dataset.action = "delete";
+  del.setAttribute("aria-label", "Delete task");
+  del.title = "Delete (Del)";
+  del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+  del.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    deleteTask(task.id);
+  });
+
+  actions.append(dateBtn, edit, del);
+  slot.appendChild(actions);
+
+  li.append(check, text, slot);
+  return li;
+}
+
+/* Update an existing row in place */
+function updateTaskRow(li, task, tokens) {
+  // checked state
+  li.classList.toggle("checked", task.done);
+  li.setAttribute("aria-checked", String(task.done));
+
+  // selected state
+  li.classList.toggle("is-selected", task.id === selectedId);
+
+  // text
+  const textEl = li.querySelector(".task__text");
+  if (textEl) {
+    textEl.innerHTML = "";
+    textEl.appendChild(highlight(task.text, tokens));
+  }
+
+  // due chip
+  const slot = li.querySelector(".task__slot");
+  if (slot) {
+    const existingChip = slot.querySelector(".task__due");
     if (task.dueAt) {
-      const due = document.createElement("span");
-      due.className = "task__due " + dueClass(task.dueAt);
-      const iconCls =
-        diffDays(task.dueAt) < 0
-          ? "fa-triangle-exclamation"
-          : "fa-calendar-day";
-      due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
-      due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
-      slot.appendChild(due);
+      if (existingChip) {
+        existingChip.className = "task__due " + dueClass(task.dueAt);
+        const iconCls =
+          diffDays(task.dueAt) < 0
+            ? "fa-triangle-exclamation"
+            : "fa-calendar-day";
+        existingChip.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+        existingChip.appendChild(
+          document.createTextNode(" " + formatDue(task.dueAt)),
+        );
+      } else {
+        const due = document.createElement("span");
+        due.className = "task__due " + dueClass(task.dueAt);
+        const iconCls =
+          diffDays(task.dueAt) < 0
+            ? "fa-triangle-exclamation"
+            : "fa-calendar-day";
+        due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+        due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+        slot.insertBefore(due, slot.firstChild);
+      }
+    } else if (existingChip) {
+      existingChip.remove();
     }
+  }
 
-    const actions = document.createElement("div");
-    actions.className = "task__actions";
-
-    const dateBtn = document.createElement("button");
-    dateBtn.type = "button";
-    dateBtn.className = "task__action task__date-btn";
-    dateBtn.dataset.action = "date";
+  // update date button aria-label
+  const dateBtn = li.querySelector('[data-action="date"]');
+  if (dateBtn) {
     dateBtn.setAttribute(
       "aria-label",
       task.dueAt ? "Change due date" : "Set due date",
     );
-    dateBtn.title = "Set due date (D)";
-    dateBtn.innerHTML = '<i class="far fa-calendar" aria-hidden="true"></i>';
-    dateBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      openDatePopover(dateBtn, task.id);
-    });
+  }
+}
 
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.className = "task__action task__edit-btn";
-    edit.dataset.action = "edit";
-    edit.setAttribute("aria-label", "Edit task");
-    edit.title = "Edit (E)";
-    edit.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
-    edit.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      startEdit(li);
-    });
+/* Rendering (keyed reconciliation) */
+function render() {
+  const { list, tokens } = visibleTasks();
 
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "task__action task__delete";
-    del.dataset.action = "delete";
-    del.setAttribute("aria-label", "Delete task");
-    del.title = "Delete (Del)";
-    del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
-    del.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      deleteTask(task.id);
-    });
+  // Build a Set of desired ids for O(1) lookups
+  const desiredIds = new Set(list.map((t) => t.id));
 
-    actions.append(dateBtn, edit, del);
-    slot.appendChild(actions);
-
-    li.append(check, text, slot);
-    listEl.appendChild(li);
+  // 1. Remove rows whose tasks are no longer visible
+  [...listEl.children].forEach((li) => {
+    if (!desiredIds.has(li.dataset.id)) {
+      li.remove();
+    }
   });
 
+  // 2. Walk the desired list in order. Reuse existing rows in place,
+  //    create only genuinely new ones (with entry animation).
+  list.forEach((task, index) => {
+    let li = listEl.querySelector(`.task[data-id="${task.id}"]`);
+
+    if (li) {
+      updateTaskRow(li, task, tokens);
+    } else {
+      li = buildTaskRow(task, tokens);
+      if (!leavingIds.has(task.id)) {
+        li.classList.add("task--enter");
+      }
+    }
+
+    // Ensure the row is at the correct position
+    const currentAtIndex = listEl.children[index];
+    if (currentAtIndex !== li) {
+      listEl.insertBefore(li, currentAtIndex || null);
+    }
+  });
+
+  updateProgress();
+  updateEmptyState(list.length);
+
+  if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
+}
+
+function updateProgress() {
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   progressFill.style.strokeDasharray = `${pct}, 100`;
   progressLabel.textContent = pct + "%";
+}
 
-  if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
-
-  emptyEl.hidden = list.length > 0;
-  if (list.length === 0) {
-    if (query) {
-      emptyTitle.textContent = "No matches";
-      emptyText.textContent = `Nothing matches “${query}”.`;
-    } else if (filter === "today") {
-      emptyTitle.textContent = "Nothing due today 🎉";
-      emptyText.textContent = "Enjoy the clear schedule.";
-    } else if (total === 0) {
-      emptyTitle.textContent = "All clear!";
-      emptyText.textContent = "Add your first task above.";
-    } else if (filter === "active") {
-      emptyTitle.textContent = "No active tasks 🎉";
-      emptyText.textContent = "Everything is done. Enjoy your day!";
-    } else {
-      emptyTitle.textContent = "Nothing done yet";
-      emptyTitle.textContent = "Nothing done yet";
-      emptyText.textContent = "Check off a task to see it here.";
-    }
+function updateEmptyState(listLength) {
+  emptyEl.hidden = listLength > 0;
+  if (listLength > 0) return;
+  const total = tasks.length;
+  if (query) {
+    emptyTitle.textContent = "No matches";
+    emptyText.textContent = `Nothing matches “${query}”.`;
+  } else if (filter === "today") {
+    emptyTitle.textContent = "Nothing due today 🎉";
+    emptyText.textContent = "Enjoy the clear schedule.";
+  } else if (total === 0) {
+    emptyTitle.textContent = "All clear!";
+    emptyText.textContent = "Add your first task above.";
+  } else if (filter === "active") {
+    emptyTitle.textContent = "No active tasks 🎉";
+    emptyText.textContent = "Everything is done. Enjoy your day!";
+  } else {
+    emptyTitle.textContent = "Nothing done yet";
+    emptyText.textContent = "Check off a task to see it here.";
   }
+}
+
+/* Row leave animation */
+function leaveRow(li, onDone) {
+  li.getAnimations().forEach((a) => a.cancel());
+  li.classList.remove("task--enter");
+  li.classList.add("is-leaving");
+  li.setAttribute("aria-checked", "true");
+
+  const rect = li.getBoundingClientRect();
+  const cs = getComputedStyle(li);
+  const h = rect.height;
+  const padTop = parseFloat(cs.paddingTop) || 0;
+  const padBottom = parseFloat(cs.paddingBottom) || 0;
+  const borderTop = parseFloat(cs.borderTopWidth) || 0;
+  const borderBottom = parseFloat(cs.borderBottomWidth) || 0;
+
+  const anim = li.animate(
+    [
+      {
+        opacity: 1,
+        transform: "translateX(0)",
+        height: `${h}px`,
+        marginBottom: "0px",
+        paddingTop: `${padTop}px`,
+        paddingBottom: `${padBottom}px`,
+        borderTopWidth: `${borderTop}px`,
+        borderBottomWidth: `${borderBottom}px`,
+        offset: 0,
+      },
+      {
+        opacity: 0,
+        transform: "translateX(28px)",
+        height: `${h}px`,
+        marginBottom: "0px",
+        paddingTop: `${padTop}px`,
+        paddingBottom: `${padBottom}px`,
+        borderTopWidth: `${borderTop}px`,
+        borderBottomWidth: `${borderBottom}px`,
+        offset: 0.4,
+      },
+      {
+        opacity: 0,
+        transform: "translateX(28px)",
+        height: "0px",
+        marginBottom: "-8px",
+        paddingTop: "0px",
+        paddingBottom: "0px",
+        borderTopWidth: "0px",
+        borderBottomWidth: "0px",
+        offset: 1,
+      },
+    ],
+    {
+      duration: LEAVE_DURATION,
+      easing: "cubic-bezier(0.4, 0, 0.2, 1)",
+      fill: "forwards",
+    },
+  );
+
+  anim.onfinish = () => {
+    anim.cancel();
+    onDone();
+  };
 }
 
 /* Actions */
@@ -352,14 +501,39 @@ function toggleTask(id) {
   const leavesView = task.done && (filter === "today" || filter === "active");
 
   if (leavesView) {
-    pendingLeaveIds.add(task.id);
-    render();
-    setTimeout(() => {
-      pendingLeaveIds.delete(task.id);
+    const li = listEl.querySelector(`.task[data-id="${id}"]`);
+    if (!li) {
       render();
-    }, LEAVE_DELAY);
+      return;
+    }
+
+    // Update the row's visuals immediately so the tick lands before
+    // the row starts moving.
+    li.classList.add("checked");
+    li.setAttribute("aria-checked", "true");
+    updateProgress();
+
+    leavingIds.add(id);
+
+    requestAnimationFrame(() => {
+      leaveRow(li, () => {
+        leavingIds.delete(id);
+        // Remove this row from the DOM directly instead of a full
+        // render — no flicker for the other rows.
+        li.remove();
+        updateProgress();
+        // Update empty state in case this was the last visible row
+        updateEmptyState(listEl.children.length);
+      });
+    });
   } else {
-    render();
+    // Update the single row in place — no list re-render needed
+    const li = listEl.querySelector(`.task[data-id="${id}"]`);
+    if (li) {
+      li.classList.toggle("checked", task.done);
+      li.setAttribute("aria-checked", String(task.done));
+      updateProgress();
+    }
   }
 }
 
@@ -387,6 +561,7 @@ function setDueDate(id, iso) {
 /* Inline edit */
 function startEdit(li) {
   if (!li || li.classList.contains("is-editing")) return;
+  if (li.classList.contains("is-leaving")) return;
   const id = li.dataset.id;
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
@@ -476,7 +651,13 @@ function undoDelete() {
 function setFilter(next) {
   filter = next;
   selectedId = null;
-  pendingLeaveIds.clear();
+  if (leavingIds.size) {
+    listEl.querySelectorAll(".task.is-leaving").forEach((li) => {
+      li.getAnimations().forEach((a) => a.cancel());
+      li.remove();
+    });
+    leavingIds.clear();
+  }
   document
     .querySelectorAll(".filter")
     .forEach((b) =>
@@ -608,10 +789,6 @@ function openDatePopover(anchorEl, taskId) {
   dateInput.value = task.dueAt || "";
   dateInput.addEventListener("click", (e) => e.stopPropagation());
 
-  // Track whether the user has typed since opening the popover. If they
-  // have, `change` is a mid-edit event (Chrome fires it on every
-  // keystroke). If they haven't, `change` came from the native calendar
-  // picker — which is a deliberate, complete selection.
   let typedSinceOpen = false;
 
   dateInput.addEventListener("keydown", (e) => {
@@ -633,20 +810,15 @@ function openDatePopover(anchorEl, taskId) {
       closeDatePopover();
       return;
     }
-    // Any other key means the user is editing segments manually.
     typedSinceOpen = true;
   });
 
-  // Also mark typed if the user types before we register a keydown
-  // (e.g. pastes). Belt-and-braces.
   dateInput.addEventListener("input", () => {
     typedSinceOpen = true;
   });
 
-  // Only commit via `change` when the change came from the native
-  // calendar popup (no keydown preceded it).
   dateInput.addEventListener("change", () => {
-    if (typedSinceOpen) return; // user is still typing — wait for Enter
+    if (typedSinceOpen) return;
     const v = dateInput.value;
     if (v && isValidISODate(v)) commitAndClose(v);
   });
@@ -772,6 +944,7 @@ listEl.addEventListener("click", (e) => {
   const li = e.target.closest(".task");
   if (!li) return;
   if (li.classList.contains("is-editing")) return;
+  if (li.classList.contains("is-leaving")) return;
   if (e.target.closest("[data-action]")) return;
 
   selectTask(li.dataset.id, { scroll: false });
