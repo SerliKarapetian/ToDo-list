@@ -17,16 +17,70 @@ const searchClear = document.getElementById("search-clear");
 const searchBtn = document.getElementById("search-btn");
 
 const STORAGE_KEY = "todos";
-const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
-const UNDO_WINDOW = 5000; // 5s to undo a delete
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+const UNDO_WINDOW = 5000;
+const LEAVE_DELAY = 550; // ms — how long a completed task lingers in Today/Active
 const MAX_LENGTH = 100;
 
 /* State */
 let tasks = [];
-let filter = "all"; // "all" | "active" | "completed"
+let filter = "all"; // "all" | "today" | "active" | "completed"
 let query = "";
-let pendingDelete = null; // { task, index, timeoutId }
+let pendingDelete = null;
 let selectedId = null;
+let openPopover = null;
+let pendingLeaveIds = new Set(); // tasks animating out in Today/Active
+
+/* Date helpers */
+function todayISO() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function addDaysISO(iso, days) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function diffDays(iso) {
+  const today = new Date(todayISO() + "T00:00:00");
+  const target = new Date(iso + "T00:00:00");
+  return Math.round((target - today) / (24 * 60 * 60 * 1000));
+}
+
+function formatDue(iso) {
+  if (!iso) return "";
+  const d = diffDays(iso);
+  if (d === 0) return "Today";
+  if (d === 1) return "Tomorrow";
+  if (d === -1) return "Yesterday";
+  if (d > 1 && d <= 6) {
+    return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+      weekday: "short",
+    });
+  }
+  return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function dueClass(iso) {
+  if (!iso) return "";
+  const d = diffDays(iso);
+  if (d < 0) return "is-overdue";
+  if (d === 0) return "is-today";
+  if (d <= 3) return "is-soon";
+  return "";
+}
 
 /* Helpers */
 const uid = () =>
@@ -45,33 +99,32 @@ function load() {
   }
   const now = Date.now();
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
+  tasks.forEach((t) => {
+    if (!("dueAt" in t)) t.dueAt = null;
+  });
 }
 
-/* Normalize for case- and accent-insensitive search */
+/* Normalize for search */
 function normalize(str) {
   return str
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
 }
-
 function tokenize(text) {
   return normalize(text).split(/\s+/).filter(Boolean);
 }
-
 function matchesQuery(task, tokens) {
   if (tokens.length === 0) return true;
   const haystack = normalize(task.text);
   return tokens.every((tok) => haystack.includes(tok));
 }
 
-/* Wrap matched substrings in <mark> (case-insensitive, XSS-safe) */
+/* Highlight matches (XSS-safe) */
 function highlight(text, tokens) {
   if (!tokens.length) return document.createTextNode(text);
-
   const frag = document.createDocumentFragment();
   const haystack = normalize(text);
-
   const ranges = [];
   tokens.forEach((tok) => {
     let i = 0;
@@ -82,13 +135,10 @@ function highlight(text, tokens) {
       i = idx + tok.length;
     }
   });
-
   if (ranges.length === 0) {
     frag.appendChild(document.createTextNode(text));
     return frag;
   }
-
-  // Merge overlapping ranges
   ranges.sort((a, b) => a[0] - b[0]);
   const merged = [];
   for (const r of ranges) {
@@ -96,33 +146,58 @@ function highlight(text, tokens) {
     if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
     else merged.push([r[0], r[1]]);
   }
-
   let cursor = 0;
-  for (const [start, end] of merged) {
-    if (start > cursor) {
-      frag.appendChild(document.createTextNode(text.slice(cursor, start)));
-    }
+  for (const [s, e] of merged) {
+    if (s > cursor)
+      frag.appendChild(document.createTextNode(text.slice(cursor, s)));
     const mark = document.createElement("mark");
-    mark.textContent = text.slice(start, end);
+    mark.textContent = text.slice(s, e);
     frag.appendChild(mark);
-    cursor = end;
+    cursor = e;
   }
-  if (cursor < text.length) {
+  if (cursor < text.length)
     frag.appendChild(document.createTextNode(text.slice(cursor)));
-  }
   return frag;
 }
 
-/* Rendering */
+/* Filtering + sorting */
 function visibleTasks() {
   const tokens = tokenize(query);
   let list = tasks;
-  if (filter === "active") list = list.filter((t) => !t.done);
-  else if (filter === "completed") list = list.filter((t) => t.done);
+
+  if (filter === "today") {
+    const today = todayISO();
+    list = list.filter((t) => !t.done && t.dueAt && t.dueAt <= today);
+  } else if (filter === "active") {
+    list = list.filter((t) => !t.done);
+  } else if (filter === "completed") {
+    list = list.filter((t) => t.done);
+  }
+
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
-  return { list, tokens };
+
+  // Keep tasks that are animating out visible until the animation ends
+  if (pendingLeaveIds.size) {
+    const pending = tasks.filter((t) => pendingLeaveIds.has(t.id));
+    for (const t of pending) {
+      if (!list.find((x) => x.id === t.id)) list.push(t);
+    }
+  }
+
+  return { list: sortTasks(list), tokens };
 }
 
+function sortTasks(list) {
+  return [...list].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    if (a.dueAt && !b.dueAt) return -1;
+    if (!a.dueAt && b.dueAt) return 1;
+    if (a.dueAt && b.dueAt) return a.dueAt.localeCompare(b.dueAt);
+    return 0;
+  });
+}
+
+/* Rendering */
 function render() {
   const { list, tokens } = visibleTasks();
   listEl.innerHTML = "";
@@ -131,6 +206,13 @@ function render() {
     const li = document.createElement("li");
     li.className = "task" + (task.done ? " checked" : "");
     if (task.id === selectedId) li.classList.add("is-selected");
+    if (pendingLeaveIds.has(task.id)) li.classList.add("is-leaving");
+    if (task.dueAt) {
+      li.classList.add("has-due");
+      const cls = dueClass(task.dueAt);
+      if (cls === "is-overdue") li.classList.add("is-overdue-row");
+      if (cls === "is-today") li.classList.add("is-today-row");
+    }
     li.dataset.id = task.id;
     li.tabIndex = 0;
     li.setAttribute("role", "listitem");
@@ -144,8 +226,32 @@ function render() {
     text.className = "task__text";
     text.appendChild(highlight(task.text, tokens));
 
+    // Due chip — rendered in its own slot right after the text
+    let dueEl = null;
+    if (task.dueAt) {
+      dueEl = document.createElement("span");
+      dueEl.className = "task__due " + dueClass(task.dueAt);
+      const iconCls =
+        diffDays(task.dueAt) < 0
+          ? "fa-triangle-exclamation"
+          : "fa-calendar-day";
+      dueEl.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+      dueEl.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+    }
+
     const actions = document.createElement("div");
     actions.className = "task__actions";
+
+    const dateBtn = document.createElement("button");
+    dateBtn.type = "button";
+    dateBtn.className = "task__action task__date-btn";
+    dateBtn.dataset.action = "date";
+    dateBtn.setAttribute(
+      "aria-label",
+      task.dueAt ? "Change due date" : "Set due date",
+    );
+    dateBtn.title = "Set due date (D)";
+    dateBtn.innerHTML = '<i class="far fa-calendar" aria-hidden="true"></i>';
 
     const edit = document.createElement("button");
     edit.type = "button";
@@ -163,22 +269,22 @@ function render() {
     del.title = "Delete (Del)";
     del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
 
-    actions.append(edit, del);
-    li.append(check, text, actions);
+    actions.append(dateBtn, edit, del);
+
+    li.append(check, text);
+    if (dueEl) li.appendChild(dueEl);
+    li.appendChild(actions);
     listEl.appendChild(li);
   });
 
-  // Progress ring (based on ALL tasks)
+  // Progress ring — ALL tasks
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   progressFill.style.strokeDasharray = `${pct}, 100`;
   progressLabel.textContent = pct + "%";
 
-  // Search: reflect query state only (visibility owned by open/close)
-  if (searchBar) {
-    searchBar.classList.toggle("has-query", query.length > 0);
-  }
+  if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
 
   // Empty state
   emptyEl.hidden = list.length > 0;
@@ -186,6 +292,9 @@ function render() {
     if (query) {
       emptyTitle.textContent = "No matches";
       emptyText.textContent = `Nothing matches “${query}”.`;
+    } else if (filter === "today") {
+      emptyTitle.textContent = "Nothing due today 🎉";
+      emptyText.textContent = "Enjoy the clear schedule.";
     } else if (total === 0) {
       emptyTitle.textContent = "All clear!";
       emptyText.textContent = "Add your first task above.";
@@ -207,7 +316,13 @@ function addTask() {
     inputBox.focus();
     return;
   }
-  tasks.unshift({ id: uid(), text, done: false, completedAt: null });
+  tasks.unshift({
+    id: uid(),
+    text,
+    done: false,
+    completedAt: null,
+    dueAt: null,
+  });
   inputBox.value = "";
   save();
   render();
@@ -217,10 +332,27 @@ function addTask() {
 function toggleTask(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
+
+  const wasDone = task.done;
   task.done = !task.done;
   task.completedAt = task.done ? Date.now() : null;
   save();
-  render();
+
+  // In Today or Active, a task that just became done should linger
+  // briefly so the user sees the checkmark land before it leaves.
+  const leavesView = task.done && (filter === "today" || filter === "active");
+
+  if (leavesView) {
+    // Mark leaving, render once (row keeps .checked + .is-leaving)
+    pendingLeaveIds.add(task.id);
+    render();
+    setTimeout(() => {
+      pendingLeaveIds.delete(task.id);
+      render();
+    }, LEAVE_DELAY);
+  } else {
+    render();
+  }
 }
 
 function updateTaskText(id, text) {
@@ -232,6 +364,15 @@ function updateTaskText(id, text) {
   save();
   render();
   notify("Task updated");
+}
+
+function setDueDate(id, iso) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  task.dueAt = iso || null;
+  save();
+  render();
+  notify(iso ? "Due date set" : "Due date cleared");
 }
 
 /* Inline edit */
@@ -264,13 +405,11 @@ function startEdit(li) {
   input.setSelectionRange(len, len);
 
   let finished = false;
-
   function commit() {
     if (finished) return;
     finished = true;
     updateTaskText(id, input.value);
   }
-
   function cancel() {
     if (finished) return;
     finished = true;
@@ -278,7 +417,6 @@ function startEdit(li) {
     if (actions) actions.hidden = false;
     render();
   }
-
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -288,7 +426,6 @@ function startEdit(li) {
       cancel();
     }
   });
-
   input.addEventListener("blur", () => setTimeout(commit, 0));
   input.addEventListener("click", (e) => e.stopPropagation());
 }
@@ -297,19 +434,15 @@ function startEdit(li) {
 function deleteTask(id) {
   const index = tasks.findIndex((t) => t.id === id);
   if (index === -1) return;
-
   commitPendingDelete();
-
   const task = tasks[index];
   tasks.splice(index, 1);
   render();
-
   pendingDelete = {
     task,
     index,
     timeoutId: setTimeout(commitPendingDelete, UNDO_WINDOW),
   };
-
   showUndoToast();
 }
 
@@ -323,11 +456,9 @@ function commitPendingDelete() {
 function undoDelete() {
   if (!pendingDelete) return;
   clearTimeout(pendingDelete.timeoutId);
-
   const { task, index } = pendingDelete;
   tasks.splice(index, 0, task);
   pendingDelete = null;
-
   save();
   render();
   notify("Task restored");
@@ -336,6 +467,7 @@ function undoDelete() {
 function setFilter(next) {
   filter = next;
   selectedId = null;
+  pendingLeaveIds.clear();
   document
     .querySelectorAll(".filter")
     .forEach((b) =>
@@ -386,19 +518,16 @@ function selectTask(id, { scroll = true } = {}) {
 function moveSelection(direction) {
   const items = [...listEl.querySelectorAll(".task")];
   if (items.length === 0) return;
-
   if (!selectedId) {
     const target = direction > 0 ? items[0] : items[items.length - 1];
     selectTask(target.dataset.id);
     return;
   }
-
   const idx = items.findIndex((li) => li.dataset.id === selectedId);
   if (idx === -1) {
     selectTask(items[0].dataset.id);
     return;
   }
-
   const next = items[idx + direction];
   if (next) selectTask(next.dataset.id);
 }
@@ -408,17 +537,112 @@ function getSelectedLi() {
   return listEl.querySelector(`.task[data-id="${selectedId}"]`);
 }
 
+/* Date popover */
+function closeDatePopover() {
+  if (openPopover?.el) openPopover.el.remove();
+  openPopover = null;
+}
+
+function openDatePopover(anchorEl, taskId) {
+  closeDatePopover();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  const pop = document.createElement("div");
+  pop.className = "date-popover";
+  pop.setAttribute("role", "menu");
+
+  const mkBtn = (icon, label, onClick, danger = false) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className =
+      "date-popover__btn" + (danger ? " date-popover__btn--danger" : "");
+    b.setAttribute("role", "menuitem");
+    b.innerHTML = `<i class="fas ${icon}" aria-hidden="true"></i>`;
+    b.appendChild(document.createTextNode(" " + label));
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onClick();
+      closeDatePopover();
+    });
+    return b;
+  };
+
+  const today = todayISO();
+
+  pop.appendChild(mkBtn("fa-sun", "Today", () => setDueDate(taskId, today)));
+  pop.appendChild(
+    mkBtn("fa-arrow-right", "Tomorrow", () =>
+      setDueDate(taskId, addDaysISO(today, 1)),
+    ),
+  );
+  pop.appendChild(
+    mkBtn("fa-forward", "Next week", () =>
+      setDueDate(taskId, addDaysISO(today, 7)),
+    ),
+  );
+
+  const d1 = document.createElement("div");
+  d1.className = "date-popover__divider";
+  pop.appendChild(d1);
+
+  const customWrap = document.createElement("div");
+  customWrap.className = "date-popover__custom";
+  const dateInput = document.createElement("input");
+  dateInput.type = "date";
+  dateInput.value = task.dueAt || "";
+  dateInput.addEventListener("change", () => {
+    setDueDate(taskId, dateInput.value || null);
+    closeDatePopover();
+  });
+  dateInput.addEventListener("click", (e) => e.stopPropagation());
+  customWrap.appendChild(dateInput);
+  pop.appendChild(customWrap);
+
+  if (task.dueAt) {
+    const d2 = document.createElement("div");
+    d2.className = "date-popover__divider";
+    pop.appendChild(d2);
+    pop.appendChild(
+      mkBtn("fa-trash-can", "Clear date", () => setDueDate(taskId, null), true),
+    );
+  }
+
+  // Mark the popover so outside-click logic can ignore the *originating* click
+  pop.dataset.openedAt = Date.now();
+
+  document.body.appendChild(pop);
+  openPopover = { el: pop, taskId };
+
+  // Position near anchor, keep on screen
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let top = rect.bottom + 6;
+
+  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
+  if (left < 12) left = 12;
+  if (top + popRect.height > vh - 12) top = rect.top - popRect.height - 6;
+  if (top < 12) top = 12;
+
+  pop.style.left = left + "px";
+  pop.style.top = top + "px";
+
+  requestAnimationFrame(() => dateInput.focus());
+}
+
 /* Shortcuts overlay */
 function openShortcuts() {
   shortcutsEl.hidden = false;
   document.body.style.overflow = "hidden";
 }
-
 function closeShortcuts() {
   shortcutsEl.hidden = true;
   document.body.style.overflow = "";
 }
-
 function toggleShortcuts() {
   if (shortcutsEl.hidden) openShortcuts();
   else closeShortcuts();
@@ -429,17 +653,14 @@ function notify(message, type = "success", action = null) {
   const el = document.createElement("div");
   el.className = `notification notification--${type}`;
   el.setAttribute("role", "status");
-
   const msg = document.createElement("span");
   msg.className = "notification__message";
   msg.textContent = message;
   el.appendChild(msg);
 
   let duration = 2000;
-
   if (action) {
     duration = UNDO_WINDOW;
-
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "notification__action";
@@ -449,7 +670,6 @@ function notify(message, type = "success", action = null) {
       dismiss();
     });
     el.appendChild(btn);
-
     const timer = document.createElement("span");
     timer.className = "notification__timer";
     el.appendChild(timer);
@@ -457,20 +677,15 @@ function notify(message, type = "success", action = null) {
 
   document.body.appendChild(el);
   requestAnimationFrame(() => el.classList.add("is-visible"));
-
   function dismiss() {
     el.classList.remove("is-visible");
     setTimeout(() => el.remove(), 350);
   }
-
   setTimeout(dismiss, duration);
 }
 
 function showUndoToast() {
-  notify("Task deleted", "success", {
-    label: "Undo",
-    onClick: undoDelete,
-  });
+  notify("Task deleted", "success", { label: "Undo", onClick: undoDelete });
 }
 
 /* Theme */
@@ -478,16 +693,12 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   try {
     localStorage.setItem("theme", theme);
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
-
 themeToggle.addEventListener("click", () => {
   const current = document.documentElement.dataset.theme || "dark";
   applyTheme(current === "dark" ? "light" : "dark");
 });
-
 window
   .matchMedia("(prefers-color-scheme: light)")
   .addEventListener("change", (e) => {
@@ -495,7 +706,7 @@ window
     applyTheme(e.matches ? "light" : "dark");
   });
 
-/* Events */
+/* List interaction */
 composer.addEventListener("submit", (e) => {
   e.preventDefault();
   addTask();
@@ -504,7 +715,6 @@ composer.addEventListener("submit", (e) => {
 listEl.addEventListener("click", (e) => {
   const li = e.target.closest(".task");
   if (!li) return;
-
   if (li.classList.contains("is-editing")) return;
 
   const actionEl = e.target.closest("[data-action]");
@@ -512,6 +722,7 @@ listEl.addEventListener("click", (e) => {
     const action = actionEl.dataset.action;
     if (action === "delete") deleteTask(li.dataset.id);
     else if (action === "edit") startEdit(li);
+    else if (action === "date") openDatePopover(actionEl, li.dataset.id);
     return;
   }
 
@@ -533,7 +744,7 @@ document
 
 /* Search wiring */
 searchBtn?.addEventListener("click", (e) => {
-  e.stopPropagation(); // don't trigger document click-outside
+  e.stopPropagation();
   if (searchBar.hidden) openSearch();
   else closeSearch();
 });
@@ -559,37 +770,49 @@ searchClear?.addEventListener("click", (e) => {
 
 /* Shortcuts overlay triggers */
 shortcutsBtn?.addEventListener("click", toggleShortcuts);
-
 shortcutsEl?.addEventListener("click", (e) => {
   if (e.target.closest("[data-close]")) closeShortcuts();
 });
 
-/* Click outside → close search (if empty) + clear selection */
+/* Click outside
+   Only ONE document-level click handler. It:
+   1. Closes the date popover unless the click landed inside it.
+   2. Closes the search bar if empty.
+   3. Clears task selection UNLESS the click is on a task (the task
+      click handler already manages selection) or on UI controls.
+*/
 document.addEventListener("click", (e) => {
-  // Task row: handled by the list listener
+  // 1) Popover
+  if (openPopover) {
+    if (!e.target.closest(".date-popover")) {
+      closeDatePopover();
+    }
+  }
+
+  // If the click is on a task row, don't do anything else here —
+  // the listEl click listener handles selection and toggle.
   if (e.target.closest(".task")) return;
 
-  // Shortcuts overlay + its toggle
+  // 2) Search
+  const insideSearch = e.target.closest(".search");
+  const onSearchBtn = e.target.closest("#search-btn");
+  if (!insideSearch && !onSearchBtn) {
+    if (searchBar && !searchBar.hidden && !query) {
+      closeSearch();
+    }
+  }
+
+  // 3) Shortcuts overlay toggles
   if (e.target.closest("#shortcuts")) return;
   if (e.target.closest("#shortcuts-btn")) return;
 
-  // Search bar itself and its toggle
-  const insideSearch = e.target.closest(".search");
-  const onSearchBtn = e.target.closest("#search-btn");
-  if (insideSearch || onSearchBtn) return;
-
-  // Close search bar if open and query is empty
-  if (searchBar && !searchBar.hidden && !query) {
-    closeSearch();
-  }
-
-  // Clear task selection
+  // 4) Clear selection on any other click
   if (selectedId) {
     selectTask(null);
   }
 });
 
-/* Global keyboard shortcuts */
+/* Keyboard */
 function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
@@ -602,8 +825,12 @@ function isTypingTarget(el) {
 }
 
 document.addEventListener("keydown", (e) => {
-  // Esc always works, even inside inputs
   if (e.key === "Escape") {
+    if (openPopover) {
+      e.preventDefault();
+      closeDatePopover();
+      return;
+    }
     if (shortcutsEl && !shortcutsEl.hidden) {
       e.preventDefault();
       closeShortcuts();
@@ -618,24 +845,17 @@ document.addEventListener("keydown", (e) => {
       closeSearch();
       return;
     }
-    if (e.target === searchInput) {
-      // handled by search input's own listener
-      return;
-    }
+    if (e.target === searchInput) return;
     if (isTypingTarget(e.target)) {
       e.target.blur();
       return;
     }
-    if (selectedId) {
-      selectTask(null);
-    }
+    if (selectedId) selectTask(null);
     return;
   }
 
-  // Don't hijack keys while typing
   if (isTypingTarget(e.target)) return;
 
-  // Undo (Ctrl/Cmd + Z)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     if (pendingDelete) {
       e.preventDefault();
@@ -644,7 +864,6 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Focus composer (Ctrl/Cmd + K)
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
     e.preventDefault();
     inputBox.focus();
@@ -652,7 +871,6 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Focus search
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
     e.preventDefault();
     openSearch();
@@ -674,6 +892,12 @@ document.addEventListener("keydown", (e) => {
     case "/":
       e.preventDefault();
       openSearch();
+      break;
+
+    case "t":
+    case "T":
+      e.preventDefault();
+      setFilter("today");
       break;
 
     case "j":
@@ -710,6 +934,15 @@ document.addEventListener("keydown", (e) => {
       if (selectedLi) {
         e.preventDefault();
         startEdit(selectedLi);
+      }
+      break;
+
+    case "d":
+    case "D":
+      if (selectedId && selectedLi) {
+        e.preventDefault();
+        const btn = selectedLi.querySelector('[data-action="date"]');
+        if (btn) openDatePopover(btn, selectedId);
       }
       break;
 

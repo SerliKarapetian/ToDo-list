@@ -231,8 +231,34 @@ a {
 .header__actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-shrink: 0;
+}
+
+/*Icon buttons*/
+.icon-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  transition: var(--transition);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.icon-btn:active {
+  transform: translateY(0);
 }
 
 /*Theme toggle*/
@@ -317,7 +343,6 @@ a {
   stroke: var(--magenta);
   stroke-width: 3.5;
   stroke-linecap: round;
-  /* NOTE: no stroke-dasharray here — JS drives it via inline style */
   transition: stroke-dasharray 0.6s var(--ease);
   filter: drop-shadow(0 0 4px var(--magenta-soft));
 }
@@ -343,7 +368,7 @@ a {
   border-radius: var(--radius-pill);
   padding: 6px 6px 6px 18px;
   transition: var(--transition);
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   position: relative;
   flex-shrink: 0;
 }
@@ -363,7 +388,47 @@ a {
 .composer:focus-within .composer__icon {
   color: var(--magenta);
 }
-/* Search bar (hidden until triggered) */
+
+#input-box {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 12px 0;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  min-width: 0;
+}
+
+#input-box::placeholder {
+  color: var(--text-dim);
+}
+
+#add-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--magenta);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  transition: var(--transition);
+  box-shadow: 0 8px 18px -6px var(--magenta);
+}
+
+#add-btn:hover {
+  background: #ec4b8e;
+  transform: scale(1.06);
+}
+
+#add-btn:active {
+  transform: scale(0.95);
+}
+
+/*Search bar (hidden until triggered)*/
 .search {
   display: flex;
   align-items: center;
@@ -396,8 +461,8 @@ a {
 .search__input {
   flex: 1;
   border: none;
-  outline: none; /* ← no inner outline */
-  box-shadow: none; /* ← no inner glow */
+  outline: none;
+  box-shadow: none;
   background: transparent;
   padding: 8px 0;
   font: inherit;
@@ -447,58 +512,10 @@ a {
   transform: rotate(90deg);
 }
 
-/* Highlighted match inside a task */
-.task__text mark {
-  background: var(--magenta-soft);
-  color: var(--text);
-  border-radius: 3px;
-  padding: 1px 3px;
-  font-weight: 600;
-}
-
-#input-box {
-  flex: 1;
-  border: none;
-  outline: none;
-  background: transparent;
-  padding: 12px 0;
-  font: inherit;
-  font-size: 0.95rem;
-  color: var(--text);
-  min-width: 0;
-}
-
-#input-box::placeholder {
-  color: var(--text-dim);
-}
-
-#add-btn {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--magenta);
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 0.95rem;
-  flex-shrink: 0;
-  transition: var(--transition);
-  box-shadow: 0 8px 18px -6px var(--magenta);
-}
-
-#add-btn:hover {
-  background: #ec4b8e;
-  transform: scale(1.06);
-}
-
-#add-btn:active {
-  transform: scale(0.95);
-}
-
 /*Filters + hint*/
 .filters {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   padding: 4px;
   background: var(--surface-inset);
   border-radius: var(--radius-pill);
@@ -508,8 +525,8 @@ a {
 
 .filter {
   flex: 1;
-  padding: 9px 12px;
-  font-size: 0.83rem;
+  padding: 9px 8px;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--text-muted);
   border-radius: var(--radius-pill);
@@ -576,8 +593,8 @@ a {
 .task {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 12px 12px 14px;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -585,6 +602,7 @@ a {
   transition: var(--transition);
   animation: taskIn 0.3s var(--ease) both;
   word-break: break-word;
+  position: relative;
 }
 
 @keyframes taskIn {
@@ -598,10 +616,50 @@ a {
   }
 }
 
+/* Row is fading out (after toggle in Today/Active filter) */
+.task.is-leaving {
+  animation: taskOut 0.45s var(--ease) forwards;
+  pointer-events: none;
+}
+
+@keyframes taskOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+    max-height: 80px;
+    margin-bottom: 0;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+    max-height: 0;
+    margin-bottom: -8px;
+  }
+}
+
 .task:hover {
   background: var(--surface-hover);
   border-color: var(--line-strong);
   transform: translateY(-1px);
+}
+
+/* Soft selection tint (replaces outline) */
+.task.is-selected {
+  background: var(--magenta-soft);
+  border-color: var(--magenta);
+  box-shadow: 0 0 0 1px var(--magenta-soft);
+}
+
+.task.is-selected .task__action {
+  opacity: 1;
+}
+
+.task.is-selected .task__text {
+  color: var(--text);
+}
+
+.task.is-selected.checked .task__text {
+  color: var(--text-muted);
 }
 
 /* Custom checkbox */
@@ -647,6 +705,7 @@ a {
   font-size: 0.94rem;
   color: var(--text);
   line-height: 1.4;
+  min-width: 0;
 }
 
 .task.checked .task__text {
@@ -655,29 +714,117 @@ a {
   text-decoration-thickness: 1.5px;
 }
 
-/*Task row actions (edit + delete)*/
+.task__text mark {
+  background: var(--magenta-soft);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 600;
+}
+
+/*Due date chip — stable placement between
+   the text and the action buttons*/
+.task__due {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: var(--transition);
+  /* Pin to the right edge of the text column so it doesn't drift */
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.task__due i {
+  font-size: 0.65rem;
+  opacity: 0.85;
+}
+
+.task__due.is-soon {
+  color: var(--sage);
+  background: rgba(101, 118, 109, 0.14);
+  border-color: rgba(101, 118, 109, 0.28);
+}
+
+.task__due.is-today {
+  color: var(--magenta);
+  background: var(--magenta-soft);
+  border-color: var(--magenta);
+}
+
+.task__due.is-overdue {
+  color: var(--danger);
+  background: rgba(239, 74, 107, 0.14);
+  border-color: rgba(239, 74, 107, 0.35);
+}
+
+.task.checked .task__due {
+  opacity: 0.45;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--line);
+}
+
+/* Left accent bar for tasks with due dates */
+.task.has-due::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22%;
+  bottom: 22%;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--text-dim);
+  opacity: 0.7;
+  transition: var(--transition);
+}
+
+.task.has-due.is-overdue-row::before {
+  background: var(--danger);
+  opacity: 1;
+}
+
+.task.has-due.is-today-row::before {
+  background: var(--magenta);
+  opacity: 1;
+}
+
+/*Task actions — space reserved so the chip
+   never shifts when they fade in/out*/
 .task__actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
+  min-width: 96px;
+  justify-content: flex-end;
 }
 
 .task__action {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   color: var(--text-dim);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   opacity: 0;
   transition: var(--transition);
   flex-shrink: 0;
 }
 
 .task:hover .task__action,
-.task:focus-within .task__action {
+.task:focus-within .task__action,
+.task.is-selected .task__action {
   opacity: 1;
 }
 
@@ -687,14 +834,18 @@ a {
   outline-offset: 2px;
 }
 
-/* Edit button — magenta on hover */
+.task__date-btn:hover {
+  background: var(--magenta-soft);
+  color: var(--magenta);
+  transform: scale(1.08);
+}
+
 .task__edit-btn:hover {
   background: var(--magenta-soft);
   color: var(--magenta);
   transform: rotate(-8deg);
 }
 
-/* Delete button — red on hover */
 .task__delete:hover {
   background: rgba(239, 74, 107, 0.15);
   color: var(--danger);
@@ -719,6 +870,91 @@ a {
   outline: none;
   box-shadow: 0 0 0 3px var(--magenta-soft);
   line-height: 1.4;
+}
+
+/*Date popover*/
+.date-popover {
+  position: fixed;
+  z-index: 1050;
+  min-width: 220px;
+  background: var(--card-bg);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: cardIn 0.2s var(--ease) both;
+}
+
+.date-popover__btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: left;
+  transition: var(--transition);
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+}
+
+.date-popover__btn:hover {
+  background: var(--surface-hover);
+}
+
+.date-popover__btn i {
+  width: 16px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.date-popover__btn:hover i {
+  color: var(--magenta);
+}
+
+.date-popover__btn--danger:hover,
+.date-popover__btn--danger:hover i {
+  color: var(--danger);
+}
+
+.date-popover__divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 6px;
+}
+
+.date-popover__custom {
+  padding: 6px 10px;
+}
+
+.date-popover__custom input[type="date"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  color-scheme: dark;
+}
+
+[data-theme="light"] .date-popover__custom input[type="date"] {
+  color-scheme: light;
+}
+
+.date-popover__custom input[type="date"]:focus {
+  outline: none;
+  border-color: var(--magenta);
+  box-shadow: 0 0 0 3px var(--magenta-soft);
 }
 
 /*Empty state*/
@@ -813,7 +1049,7 @@ a {
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
-  z-index: 1000;
+  z-index: 1200;
   box-shadow: 0 14px 30px -12px rgba(0, 0, 0, 0.5);
   transform: translateY(-16px) scale(0.96);
   opacity: 0;
@@ -891,137 +1127,7 @@ a {
   }
 }
 
-/*Smooth theme transitions*/
-body,
-.card,
-.task,
-.composer,
-.filters,
-.notification,
-.theme-toggle,
-.hint,
-.credits,
-.empty__art,
-.filter,
-.task__check {
-  transition:
-    background-color 0.35s var(--ease),
-    border-color 0.35s var(--ease),
-    color 0.35s var(--ease);
-}
-
-/*Responsive*/
-@media (max-width: 600px) {
-  body {
-    padding: 12px;
-  }
-
-  .card {
-    padding: 20px 18px 16px;
-    border-radius: 20px;
-  }
-
-  .brand__icon {
-    width: 40px;
-    height: 40px;
-  }
-
-  .brand h1 {
-    font-size: 1.15rem;
-  }
-
-  .theme-toggle {
-    width: 38px;
-    height: 38px;
-  }
-
-  .progress {
-    width: 48px;
-    height: 48px;
-  }
-
-  .filter {
-    font-size: 0.78rem;
-    padding: 8px;
-  }
-
-  /* Always show action btns on touch devices */
-  .task__action {
-    opacity: 1;
-  }
-
-  .notification {
-    left: 12px;
-    right: 12px;
-    top: 12px;
-  }
-
-  .notification__action {
-    font-size: 0.72rem;
-    padding: 5px 10px;
-  }
-}
-
-/*Reduced motion*/
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-  }
-  .notification__timer {
-    animation: none;
-    width: 0;
-  }
-}
-
-/* Icon buttons (header) */
-.icon-btn {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-strong);
-  color: var(--text-muted);
-  display: grid;
-  place-items: center;
-  font-size: 0.85rem;
-  transition: var(--transition);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.icon-btn:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-  transform: translateY(-1px);
-}
-
-.icon-btn:active {
-  transform: translateY(0);
-}
-
-/* Selected task (keyboard navigation) */
-.task.is-selected {
-  background: var(--magenta-soft);
-  border-color: var(--magenta);
-  box-shadow: 0 0 0 1px var(--magenta-soft);
-}
-
-.task.is-selected .task__action {
-  opacity: 1;
-}
-
-.task.is-selected .task__text {
-  color: var(--text);
-}
-.task.is-selected.checked .task__text {
-  color: var(--text-muted);
-}
-
-/* Shortcuts cheatsheet (wide rectangle) */
+/*Shortcuts cheatsheet (wide rectangle)*/
 .shortcuts {
   position: fixed;
   inset: 0;
@@ -1094,10 +1200,6 @@ body,
   gap: 8px 28px;
 }
 
-.shortcuts__group {
-  min-width: 0;
-}
-
 .shortcuts__group h3 {
   font-size: 0.68rem;
   font-weight: 700;
@@ -1110,7 +1212,7 @@ body,
 /* Each row: keys column (fixed width) + label (flexible) */
 .shortcuts__row {
   display: grid;
-  grid-template-columns: 88px 1fr;
+  grid-template-columns: 100px 1fr;
   align-items: center;
   gap: 10px;
   padding: 5px 0;
@@ -1152,10 +1254,102 @@ body,
   }
 }
 
-/* Responsive: collapse to 2 columns, then 1 */
+/*Smooth theme transitions*/
+body,
+.card,
+.task,
+.composer,
+.filters,
+.notification,
+.theme-toggle,
+.hint,
+.credits,
+.empty__art,
+.filter,
+.task__check,
+.search,
+.icon-btn,
+.task__due {
+  transition:
+    background-color 0.35s var(--ease),
+    border-color 0.35s var(--ease),
+    color 0.35s var(--ease);
+}
+
+/*Responsive*/
 @media (max-width: 700px) {
   .shortcuts__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 20px 18px 16px;
+    border-radius: 20px;
+  }
+
+  .brand__icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .brand h1 {
+    font-size: 1.15rem;
+  }
+
+  .theme-toggle,
+  .icon-btn {
+    width: 38px;
+    height: 38px;
+  }
+
+  #search-btn {
+    display: none;
+  }
+
+  .progress {
+    width: 48px;
+    height: 48px;
+  }
+
+  .filter {
+    font-size: 0.74rem;
+    padding: 8px 4px;
+  }
+
+  /* On mobile actions are always visible, so no min-width reservation */
+  .task__actions {
+    min-width: 0;
+  }
+
+  .task__action {
+    opacity: 1;
+  }
+
+  .task__due {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    margin-right: 2px;
+  }
+
+  .notification {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+  }
+
+  .notification__action {
+    font-size: 0.72rem;
+    padding: 5px 10px;
+  }
+
+  .shortcuts__panel {
+    padding: 18px 18px 16px;
   }
 }
 
@@ -1163,15 +1357,25 @@ body,
   .shortcuts__grid {
     grid-template-columns: 1fr;
   }
-  .shortcuts__panel {
-    padding: 18px 18px 16px;
-  }
 }
 
-/* Mobile icon button */
-@media (max-width: 600px) {
-  .icon-btn {
-    width: 38px;
-    height: 38px;
+/*Reduced motion*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .notification__timer {
+    animation: none;
+    width: 0;
+  }
+
+  /* Skip the leave delay animation, just remove instantly */
+  .task.is-leaving {
+    display: none;
   }
 }
