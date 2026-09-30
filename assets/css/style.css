@@ -363,6 +363,98 @@ a {
 .composer:focus-within .composer__icon {
   color: var(--magenta);
 }
+/* Search bar (hidden until triggered) */
+.search {
+  display: flex;
+  align-items: center;
+  background: var(--surface-inset);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  padding: 4px 6px 4px 16px;
+  margin-bottom: 10px;
+  transition: var(--transition);
+  flex-shrink: 0;
+  animation: taskIn 0.25s var(--ease) both;
+}
+
+.search:focus-within {
+  border-color: var(--magenta);
+  box-shadow: 0 0 0 4px var(--magenta-soft);
+}
+
+.search__icon {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-right: 10px;
+  transition: color 0.2s var(--ease);
+}
+
+.search:focus-within .search__icon {
+  color: var(--magenta);
+}
+
+.search__input {
+  flex: 1;
+  border: none;
+  outline: none; /* ← no inner outline */
+  box-shadow: none; /* ← no inner glow */
+  background: transparent;
+  padding: 8px 0;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  min-width: 0;
+}
+
+.search__input:focus,
+.search__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Remove native iOS clear button */
+.search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search__input::placeholder {
+  color: var(--text-dim);
+}
+
+.search__clear {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  transition: var(--transition);
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.search.has-query .search__clear {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.search__clear:hover {
+  background: var(--surface-hover);
+  color: var(--danger);
+  transform: rotate(90deg);
+}
+
+/* Highlighted match inside a task */
+.task__text mark {
+  background: var(--magenta-soft);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 1px 3px;
+  font-weight: 600;
+}
 
 #input-box {
   flex: 1;
@@ -951,7 +1043,7 @@ body,
 .shortcuts__panel {
   position: relative;
   width: 100%;
-  max-width: 780px; 
+  max-width: 780px;
   max-height: calc(100dvh - 40px);
   overflow-y: auto;
   background: var(--card-bg);

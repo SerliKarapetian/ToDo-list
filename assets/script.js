@@ -11,16 +11,21 @@ const progressLabel = document.getElementById("progress-label");
 const themeToggle = document.getElementById("theme-toggle");
 const shortcutsBtn = document.getElementById("shortcuts-btn");
 const shortcutsEl = document.getElementById("shortcuts");
+const searchBar = document.getElementById("search-bar");
+const searchInput = document.getElementById("search-input");
+const searchClear = document.getElementById("search-clear");
+const searchBtn = document.getElementById("search-btn");
 
 const STORAGE_KEY = "todos";
-const WEEK = 7 * 24 * 60 * 60 * 1000;
-const UNDO_WINDOW = 5000;
+const WEEK = 7 * 24 * 60 * 60 * 1000; // 1 week in ms
+const UNDO_WINDOW = 5000; // 5s to undo a delete
 const MAX_LENGTH = 100;
 
 /* State */
 let tasks = [];
-let filter = "all";
-let pendingDelete = null;
+let filter = "all"; // "all" | "active" | "completed"
+let query = "";
+let pendingDelete = null; // { task, index, timeoutId }
 let selectedId = null;
 
 /* Helpers */
@@ -42,15 +47,84 @@ function load() {
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
 }
 
+/* Normalize for case- and accent-insensitive search */
+function normalize(str) {
+  return str
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function tokenize(text) {
+  return normalize(text).split(/\s+/).filter(Boolean);
+}
+
+function matchesQuery(task, tokens) {
+  if (tokens.length === 0) return true;
+  const haystack = normalize(task.text);
+  return tokens.every((tok) => haystack.includes(tok));
+}
+
+/* Wrap matched substrings in <mark> (case-insensitive, XSS-safe) */
+function highlight(text, tokens) {
+  if (!tokens.length) return document.createTextNode(text);
+
+  const frag = document.createDocumentFragment();
+  const haystack = normalize(text);
+
+  const ranges = [];
+  tokens.forEach((tok) => {
+    let i = 0;
+    while (i < haystack.length) {
+      const idx = haystack.indexOf(tok, i);
+      if (idx === -1) break;
+      ranges.push([idx, idx + tok.length]);
+      i = idx + tok.length;
+    }
+  });
+
+  if (ranges.length === 0) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+
+  // Merge overlapping ranges
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const r of ranges) {
+    const last = merged[merged.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else merged.push([r[0], r[1]]);
+  }
+
+  let cursor = 0;
+  for (const [start, end] of merged) {
+    if (start > cursor) {
+      frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+    }
+    const mark = document.createElement("mark");
+    mark.textContent = text.slice(start, end);
+    frag.appendChild(mark);
+    cursor = end;
+  }
+  if (cursor < text.length) {
+    frag.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+  return frag;
+}
+
 /* Rendering */
 function visibleTasks() {
-  if (filter === "active") return tasks.filter((t) => !t.done);
-  if (filter === "completed") return tasks.filter((t) => t.done);
-  return tasks;
+  const tokens = tokenize(query);
+  let list = tasks;
+  if (filter === "active") list = list.filter((t) => !t.done);
+  else if (filter === "completed") list = list.filter((t) => t.done);
+  if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
+  return { list, tokens };
 }
 
 function render() {
-  const list = visibleTasks();
+  const { list, tokens } = visibleTasks();
   listEl.innerHTML = "";
 
   list.forEach((task) => {
@@ -68,7 +142,7 @@ function render() {
 
     const text = document.createElement("span");
     text.className = "task__text";
-    text.textContent = task.text;
+    text.appendChild(highlight(task.text, tokens));
 
     const actions = document.createElement("div");
     actions.className = "task__actions";
@@ -94,17 +168,25 @@ function render() {
     listEl.appendChild(li);
   });
 
-  // Progress
+  // Progress ring (based on ALL tasks)
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
   progressFill.style.strokeDasharray = `${pct}, 100`;
   progressLabel.textContent = pct + "%";
 
+  // Search: reflect query state only (visibility owned by open/close)
+  if (searchBar) {
+    searchBar.classList.toggle("has-query", query.length > 0);
+  }
+
   // Empty state
   emptyEl.hidden = list.length > 0;
   if (list.length === 0) {
-    if (total === 0) {
+    if (query) {
+      emptyTitle.textContent = "No matches";
+      emptyText.textContent = `Nothing matches “${query}”.`;
+    } else if (total === 0) {
       emptyTitle.textContent = "All clear!";
       emptyText.textContent = "Add your first task above.";
     } else if (filter === "active") {
@@ -262,6 +344,33 @@ function setFilter(next) {
   render();
 }
 
+/* Search */
+function openSearch() {
+  if (!searchBar) return;
+  searchBar.hidden = false;
+  requestAnimationFrame(() => {
+    searchInput.focus();
+    searchInput.select();
+  });
+}
+
+function closeSearch({ clear = true } = {}) {
+  if (!searchBar) return;
+  if (clear) {
+    query = "";
+    searchInput.value = "";
+  }
+  searchBar.hidden = true;
+  selectedId = null;
+  render();
+}
+
+function setQuery(next) {
+  query = next;
+  selectedId = null;
+  render();
+}
+
 /* Selection */
 function selectTask(id, { scroll = true } = {}) {
   selectedId = id;
@@ -406,12 +515,10 @@ listEl.addEventListener("click", (e) => {
     return;
   }
 
-  // Click anywhere else on the row: select + toggle
   selectTask(li.dataset.id, { scroll: false });
   toggleTask(li.dataset.id);
 });
 
-// Focused task + keyboard — handled by the global handler below now.
 listEl.addEventListener("focusin", (e) => {
   const li = e.target.closest(".task");
   if (li) selectTask(li.dataset.id, { scroll: false });
@@ -424,6 +531,32 @@ document
     btn.addEventListener("click", () => setFilter(btn.dataset.filter)),
   );
 
+/* Search wiring */
+searchBtn?.addEventListener("click", (e) => {
+  e.stopPropagation(); // don't trigger document click-outside
+  if (searchBar.hidden) openSearch();
+  else closeSearch();
+});
+
+searchInput?.addEventListener("input", (e) => {
+  setQuery(e.target.value.trim());
+});
+
+searchInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    closeSearch();
+  }
+});
+
+searchClear?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  searchInput.value = "";
+  setQuery("");
+  searchInput.focus();
+});
+
 /* Shortcuts overlay triggers */
 shortcutsBtn?.addEventListener("click", toggleShortcuts);
 
@@ -431,17 +564,26 @@ shortcutsEl?.addEventListener("click", (e) => {
   if (e.target.closest("[data-close]")) closeShortcuts();
 });
 
-/* Click outside any task → clear selection */
+/* Click outside → close search (if empty) + clear selection */
 document.addEventListener("click", (e) => {
-  // Ignore clicks inside a task (the list handler manages those)
+  // Task row: handled by the list listener
   if (e.target.closest(".task")) return;
 
-  // Ignore clicks inside the shortcuts overlay
+  // Shortcuts overlay + its toggle
   if (e.target.closest("#shortcuts")) return;
-
-  // Ignore clicks on the shortcuts toggle button (it's a UI control)
   if (e.target.closest("#shortcuts-btn")) return;
 
+  // Search bar itself and its toggle
+  const insideSearch = e.target.closest(".search");
+  const onSearchBtn = e.target.closest("#search-btn");
+  if (insideSearch || onSearchBtn) return;
+
+  // Close search bar if open and query is empty
+  if (searchBar && !searchBar.hidden && !query) {
+    closeSearch();
+  }
+
+  // Clear task selection
   if (selectedId) {
     selectTask(null);
   }
@@ -460,15 +602,27 @@ function isTypingTarget(el) {
 }
 
 document.addEventListener("keydown", (e) => {
-  // Esc always works, even inside inputs (used to cancel edit)
+  // Esc always works, even inside inputs
   if (e.key === "Escape") {
     if (shortcutsEl && !shortcutsEl.hidden) {
       e.preventDefault();
       closeShortcuts();
       return;
     }
+    if (
+      searchBar &&
+      !searchBar.hidden &&
+      document.activeElement !== searchInput
+    ) {
+      e.preventDefault();
+      closeSearch();
+      return;
+    }
+    if (e.target === searchInput) {
+      // handled by search input's own listener
+      return;
+    }
     if (isTypingTarget(e.target)) {
-      // Blur the input; edit's own Esc handler handles cancel
       e.target.blur();
       return;
     }
@@ -498,22 +652,30 @@ document.addEventListener("keydown", (e) => {
     return;
   }
 
-  // Ignore bare modifier presses
+  // Focus search
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+    e.preventDefault();
+    openSearch();
+    return;
+  }
+
   if (e.ctrlKey || e.metaKey || e.altKey) return;
 
   const selectedLi = getSelectedLi();
 
   switch (e.key) {
-    // Focus composer
     case "n":
     case "N":
-    case "/":
       e.preventDefault();
       inputBox.focus();
       inputBox.select();
       break;
 
-    // Navigation
+    case "/":
+      e.preventDefault();
+      openSearch();
+      break;
+
     case "j":
     case "J":
     case "ArrowDown":
@@ -528,7 +690,6 @@ document.addEventListener("keydown", (e) => {
       moveSelection(-1);
       break;
 
-    // Toggle done
     case "x":
     case "X":
       if (selectedId) {
@@ -544,7 +705,6 @@ document.addEventListener("keydown", (e) => {
       }
       break;
 
-    // Edit selected
     case "e":
     case "E":
       if (selectedLi) {
@@ -553,7 +713,6 @@ document.addEventListener("keydown", (e) => {
       }
       break;
 
-    // Delete selected
     case "Delete":
     case "Backspace":
       if (selectedId) {
@@ -564,7 +723,6 @@ document.addEventListener("keydown", (e) => {
       }
       break;
 
-    // Shortcuts overlay
     case "?":
       e.preventDefault();
       toggleShortcuts();
