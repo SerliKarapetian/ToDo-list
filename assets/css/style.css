@@ -575,6 +575,7 @@ a {
   margin-right: -4px;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
+  isolation: isolate;
 }
 
 .tasks::-webkit-scrollbar {
@@ -601,9 +602,12 @@ a {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition);
-  animation: taskIn 0.3s var(--ease) both;
   word-break: break-word;
   position: relative;
+}
+
+.task--enter {
+  animation: taskIn 0.3s var(--ease) both;
 }
 
 @keyframes taskIn {
@@ -890,71 +894,44 @@ body.is-dragging * {
   cursor: grabbing !important;
 }
 
-/* The source row stays in place as a dashed placeholder */
 .task.task--dragging {
-  opacity: 0.35;
-  background: var(--surface-hover);
-  border-style: dashed;
+  z-index: 10;
+  opacity: 0.5;
+  background: var(--magenta-soft);
+  border: 1px dashed var(--magenta);
+  box-shadow: 0 0 0 1px var(--magenta-soft);
+  transition:
+    background-color 0s,
+    border-color 0s,
+    color 0s;
 }
 
-/* Ghost — a floating clone that follows the pointer */
+.task.task--shifting {
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Ghost — the elevated clone that floats above the pointer. */
 .task--ghost {
   position: fixed;
+  left: 0;
+  top: 0;
   z-index: 1300;
   pointer-events: none;
-  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+  box-shadow:
+    0 12px 32px -10px rgba(0, 0, 0, 0.5),
+    0 2px 6px -2px rgba(0, 0, 0, 0.3);
   border: 1px solid var(--magenta);
   border-radius: var(--radius-md);
-  background: var(--surface-soft);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  transform: rotate(-1.5deg);
-  opacity: 0.95;
+  background: var(--surface-hover);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0.98;
+  will-change: transform;
 }
 
 .task--ghost .task__grip {
   opacity: 1;
   color: var(--magenta);
-}
-
-/* Drop indicator — thin magenta line between rows */
-.drop-indicator {
-  position: fixed;
-  height: 2px;
-  background: var(--magenta);
-  border-radius: 2px;
-  opacity: 0;
-  pointer-events: none;
-  z-index: 1290;
-  transition: opacity 0.12s var(--ease);
-  box-shadow:
-    0 0 8px var(--magenta),
-    0 0 0 1px var(--magenta-soft);
-}
-
-.drop-indicator.is-visible {
-  opacity: 1;
-}
-
-.drop-indicator::before,
-.drop-indicator::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--magenta);
-  transform: translateY(-50%);
-  box-shadow: 0 0 6px var(--magenta);
-}
-
-.drop-indicator::before {
-  left: -4px;
-}
-
-.drop-indicator::after {
-  right: -4px;
 }
 
 /* Inline edit */
@@ -1533,8 +1510,8 @@ body,
     display: none;
   }
 
-  /* No ghost tilt for motion-sensitive users */
-  .task--ghost {
-    transform: none;
+  /* Shifting disabled for users who don't want motion */
+  .task.task--shifting {
+    transition: none;
   }
 }

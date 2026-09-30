@@ -379,7 +379,14 @@ function render() {
       }
     } else {
       li = buildTaskRow(task, tokens);
-      if (!leavingIds.has(task.id)) li.classList.add("task--enter");
+      if (!leavingIds.has(task.id)) {
+        li.classList.add("task--enter");
+        li.addEventListener(
+          "animationend",
+          () => li.classList.remove("task--enter"),
+          { once: true },
+        );
+      }
     }
 
     const currentAtIndex = listEl.children[index];
@@ -486,7 +493,7 @@ function leaveRow(li, onDone) {
   };
 }
 
-/* ---------- Drag & drop reordering ---------- */
+/* Drag & drop reordering */
 function startDrag(e, li, id) {
   if (!canReorder()) return;
   if (e.button !== undefined && e.button !== 0) return; // left-click only
@@ -495,8 +502,9 @@ function startDrag(e, li, id) {
   e.stopPropagation();
 
   const rect = li.getBoundingClientRect();
+  const listRect = listEl.getBoundingClientRect();
 
-  // Ghost element — a visual clone that follows the pointer.
+  // Ghost element — the elevated visual that follows the pointer.
   const ghost = li.cloneNode(true);
   ghost.classList.add("task--ghost");
   ghost.style.width = rect.width + "px";
@@ -505,76 +513,136 @@ function startDrag(e, li, id) {
   ghost.style.top = rect.top + "px";
   document.body.appendChild(ghost);
 
-  // Placeholder line — a drop indicator positioned between rows.
-  const indicator = document.createElement("div");
-  indicator.className = "drop-indicator";
-  document.body.appendChild(indicator);
+  const indicator = null;
+
 
   li.classList.add("task--dragging");
+
+  // Snapshot the rows BEFORE we add any transforms.
+  const rowEls = [...listEl.querySelectorAll(".task")];
+  const rows = rowEls.map((el) => {
+    const r = el.getBoundingClientRect();
+    return {
+      el,
+      id: el.dataset.id,
+      originalTop: r.top,
+      height: r.height,
+    };
+  });
+
+  const gap =
+    rows.length > 1
+      ? Math.max(
+          0,
+          rows[1].originalTop - (rows[0].originalTop + rows[0].height),
+        )
+      : 8;
+
+  const fromIndex = rows.findIndex((r) => r.id === id);
 
   dragging = {
     id,
     li,
     ghost,
     indicator,
+    rows,
+    gap,
+    fromIndex,
+    targetIndex: fromIndex,
+    listTop: listRect.top,
+    listBottom: listRect.bottom,
     startY: e.clientY,
     offsetY: e.clientY - rect.top,
     pointerId: e.pointerId,
+    draggedHeight: rect.height,
+    autoScroll: 0,
   };
 
   document.body.classList.add("is-dragging");
 
-  // Listen at document level so the drag continues off-row.
   document.addEventListener("pointermove", onDragMove);
   document.addEventListener("pointerup", onDragEnd);
   document.addEventListener("pointercancel", onDragEnd);
-
-  try {
-    li.setPointerCapture?.(e.pointerId);
-  } catch {}
 }
 
 function onDragMove(e) {
   if (!dragging) return;
-  const { ghost, indicator, offsetY } = dragging;
+  const { ghost, indicator, offsetY, rows, gap, fromIndex, draggedHeight, li } =
+    dragging;
+
   const y = e.clientY;
 
-  ghost.style.top = y - offsetY + "px";
-
-  // Compute the target insertion index based on pointer position
-  // relative to the visible rows (excluding the dragged row itself).
-  const rows = [...listEl.querySelectorAll(".task:not(.task--dragging)")];
-  let insertBefore = rows.length;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i].getBoundingClientRect();
-    const mid = r.top + r.height / 2;
-    if (y < mid) {
-      insertBefore = i;
-      break;
+  // Autoscroll: nudge the list if the pointer is near an edge
+  const listRect = listEl.getBoundingClientRect();
+  let scrollDelta = 0;
+  const EDGE = 48;
+  const MAX = 14;
+  if (y < listRect.top + EDGE) {
+    const t = 1 - (y - listRect.top) / EDGE;
+    scrollDelta = -Math.round(MAX * Math.min(1, Math.max(0, t)));
+  } else if (y > listRect.bottom - EDGE) {
+    const t = 1 - (listRect.bottom - y) / EDGE;
+    scrollDelta = Math.round(MAX * Math.min(1, Math.max(0, t)));
+  }
+  if (scrollDelta !== 0) {
+    const before = listEl.scrollTop;
+    listEl.scrollTop += scrollDelta;
+    const applied = listEl.scrollTop - before;
+    if (applied !== 0) {
+      for (const r of rows) r.originalTop -= applied;
+      dragging.listTop -= applied;
+      dragging.listBottom -= applied;
     }
   }
 
-  // Position the indicator line accordingly.
-  const rect = listEl.getBoundingClientRect();
-  let lineY;
-  if (insertBefore === 0) {
-    lineY = rows.length
-      ? rows[0].getBoundingClientRect().top - 4
-      : listEl.getBoundingClientRect().top;
-  } else if (insertBefore >= rows.length) {
-    lineY = rows.length
-      ? rows[rows.length - 1].getBoundingClientRect().bottom + 4
-      : listEl.getBoundingClientRect().bottom;
-  } else {
-    lineY = rows[insertBefore].getBoundingClientRect().top - 4;
+  // Ghost follows the pointer
+  ghost.style.top = y - offsetY + "px";
+
+  // Move the dragged <li> vertically with the pointer
+  const draggedRow = rows[fromIndex];
+  const draggedCurrentTop = y - offsetY;
+  const draggedDelta = draggedCurrentTop - draggedRow.originalTop;
+  li.style.transform = `translate3d(0, ${draggedDelta}px, 0)`;
+
+  // Compute target slot based on pointer position
+  const draggedCenter = y - offsetY + draggedHeight / 2;
+
+  let target = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (i === fromIndex) continue;
+    const mid = r.originalTop + r.height / 2;
+    if (draggedCenter < mid) {
+      target = i;
+      break;
+    }
+    target = i;
+  }
+  if (
+    draggedCenter >=
+    rows[rows.length - 1].originalTop + rows[rows.length - 1].height / 2
+  ) {
+    target = rows.length - 1;
   }
 
-  indicator.style.left = rect.left + 8 + "px";
-  indicator.style.width = rect.width - 16 + "px";
-  indicator.style.top = lineY + "px";
-  indicator.classList.add("is-visible");
+  dragging.targetIndex = target;
 
-  dragging.targetIndex = insertBefore;
+  // Translate siblings to open a slot
+  rows.forEach((r, i) => {
+    if (i === fromIndex) return;
+    let shift = 0;
+    if (target > fromIndex) {
+      if (i > fromIndex && i <= target) shift = -(draggedHeight + gap);
+    } else if (target < fromIndex) {
+      if (i >= target && i < fromIndex) shift = draggedHeight + gap;
+    }
+    r.el.style.transform = shift ? `translate3d(0, ${shift}px, 0)` : "";
+    r.el.classList.toggle("task--shifting", shift !== 0);
+  });
+
+  if (indicator) {
+    // no-op — kept for forward compatibility
+  }
 }
 
 function onDragEnd() {
@@ -584,16 +652,24 @@ function onDragEnd() {
   document.removeEventListener("pointerup", onDragEnd);
   document.removeEventListener("pointercancel", onDragEnd);
 
-  const { id, ghost, indicator, targetIndex } = dragging;
+  const { id, ghost, indicator, targetIndex, li, rows, fromIndex } = dragging;
+
+  // Clear all shifts and the dragged row's transform.
+  rows.forEach((r) => {
+    r.el.style.transform = "";
+    r.el.classList.remove("task--shifting");
+  });
+  li.style.transform = "";
+
   ghost.remove();
-  indicator.remove();
+  if (indicator) indicator.remove();
   document.body.classList.remove("is-dragging");
+  li.classList.remove("task--dragging");
 
-  const li = listEl.querySelector(`.task[data-id="${id}"]`);
-  li?.classList.remove("task--dragging");
-
-  if (typeof targetIndex === "number") {
+  if (typeof targetIndex === "number" && targetIndex !== fromIndex) {
     reorderTask(id, targetIndex);
+  } else {
+    render();
   }
 
   dragging = null;
@@ -611,13 +687,11 @@ function reorderTask(id, targetIndex) {
   if (to === fromIndex) return;
 
   // Reorder within the visible list, then write back order values to
-  // the master array. Tasks not currently visible keep their relative
-  // order.
+  // the master array.
   const reordered = [...list];
   const [moved] = reordered.splice(fromIndex, 1);
   reordered.splice(to, 0, moved);
 
-  // Assign new order values to the visible tasks in their new sequence.
   reordered.forEach((t, i) => {
     const task = tasks.find((x) => x.id === t.id);
     if (task) task.order = i;
