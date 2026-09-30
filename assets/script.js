@@ -572,45 +572,83 @@ function startEdit(li) {
 
   li.classList.add("is-editing");
 
-  const input = document.createElement("input");
-  input.type = "text";
+  const input = document.createElement("textarea");
   input.className = "task__edit";
   input.value = task.text;
   input.maxLength = MAX_LENGTH;
   input.setAttribute("aria-label", "Edit task");
   input.autocomplete = "off";
   input.spellcheck = false;
+  input.rows = 1;
 
   textEl.replaceWith(input);
   if (slot) slot.hidden = true;
+
+  // Auto-grow: match the textarea height to its content height so
+  // long tasks are fully visible without scrollbars.
+  function autoGrow() {
+    input.style.height = "auto";
+    input.style.height = input.scrollHeight + "px";
+  }
+  input.addEventListener("input", autoGrow);
+  autoGrow();
 
   input.focus();
   const len = input.value.length;
   input.setSelectionRange(len, len);
 
   let finished = false;
-  function commit() {
+
+  function finish(shouldPersist) {
     if (finished) return;
     finished = true;
-    updateTaskText(id, input.value);
-  }
-  function cancel() {
-    if (finished) return;
-    finished = true;
+
+    // 1. Blur first so focus does not fall back to the <li>, which
+    //    would trigger the list's focusin handler and re-select the
+    //    row we are about to deselect.
+    input.blur();
+
+    // 2. Deselect the task.
+    selectedId = null;
+
+    // 3. If saving, update the task text (only if it actually changed).
+    if (shouldPersist) {
+      const trimmed = input.value.trim();
+      const t = tasks.find((x) => x.id === id);
+      if (t && trimmed && trimmed !== t.text) {
+        t.text = trimmed;
+        save();
+        notify("Task updated");
+      }
+    }
+
+    // 4. Rebuild this row in place. This always removes the textarea
+    //    and restores read mode, whether or not the text changed.
     li.classList.remove("is-editing");
-    if (slot) slot.hidden = false;
-    render();
+    const current = tasks.find((x) => x.id === id);
+    if (current) {
+      const fresh = buildTaskRow(current, tokenize(query));
+      li.replaceWith(fresh);
+    } else {
+      render();
+    }
+
+    // 5. Refresh the progress ring.
+    updateProgress();
   }
+
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      commit();
+      e.stopPropagation();
+      finish(true);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      cancel();
+      e.stopPropagation();
+      finish(false);
     }
   });
-  input.addEventListener("blur", () => setTimeout(commit, 0));
+  input.addEventListener("blur", () => setTimeout(() => finish(false), 0));
   input.addEventListener("click", (e) => e.stopPropagation());
 }
 

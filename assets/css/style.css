@@ -848,21 +848,40 @@ a {
 /* Inline edit */
 .task.is-editing {
   cursor: default;
+  align-items: flex-start;
 }
 
 .task__edit {
   flex: 1;
   min-width: 0;
-  padding: 4px 8px;
+  width: 100%;
+  padding: 6px 10px;
   font: inherit;
   font-size: 0.94rem;
   color: var(--text);
   background: var(--surface-inset);
-  border: 1.5px solid var(--magenta);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   outline: none;
-  box-shadow: 0 0 0 3px var(--magenta-soft);
+  box-shadow: none;
   line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+  transition:
+    background-color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+
+.task__edit::placeholder {
+  color: var(--text-dim);
+}
+
+.task__edit:focus {
+  background: var(--surface-soft);
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 2px var(--magenta-soft);
 }
 
 /* Date popover */
