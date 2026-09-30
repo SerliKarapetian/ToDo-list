@@ -56,6 +56,15 @@
         <div class="header__actions">
           <button
             type="button"
+            class="icon-btn"
+            id="shortcuts-btn"
+            aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
+          >
+            <i class="fas fa-keyboard" aria-hidden="true"></i>
+          </button>
+          <button
+            type="button"
             class="theme-toggle"
             id="theme-toggle"
             aria-label="Toggle theme"
@@ -140,6 +149,86 @@
         </p>
       </footer>
     </main>
+    <!-- Keyboard shortcuts cheatsheet -->
+    <div
+      class="shortcuts"
+      id="shortcuts"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcuts-title"
+    >
+      <div class="shortcuts__backdrop" data-close></div>
+      <div class="shortcuts__panel">
+        <header class="shortcuts__header">
+          <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+          <button
+            type="button"
+            class="shortcuts__close"
+            data-close
+            aria-label="Close"
+          >
+            <i class="fas fa-times" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div class="shortcuts__grid">
+          <div class="shortcuts__group">
+            <h3>Navigation</h3>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>J</kbd><kbd>↓</kbd></span>
+              <span>Next task</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>K</kbd><kbd>↑</kbd></span>
+              <span>Previous task</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>Esc</kbd></span>
+              <span>Clear selection / cancel</span>
+            </div>
+          </div>
+
+          <div class="shortcuts__group">
+            <h3>Actions</h3>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>N</kbd><kbd>/</kbd></span>
+              <span>New task</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>E</kbd></span>
+              <span>Edit selected</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"
+                ><kbd>X</kbd><kbd>Space</kbd></span
+              >
+              <span>Toggle done</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>Del</kbd></span>
+              <span>Delete selected</span>
+            </div>
+          </div>
+
+          <div class="shortcuts__group">
+            <h3>Global</h3>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>Ctrl + K</kbd></span>
+              <span>Focus composer</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>Ctrl + Z</kbd></span>
+              <span>Undo delete</span>
+            </div>
+            <div class="shortcuts__row">
+              <span class="shortcuts__keys"><kbd>?</kbd></span>
+              <span>Show shortcuts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <script src="./assets/script.js" defer></script>
   </body>
