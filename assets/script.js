@@ -19,12 +19,12 @@ const searchBtn = document.getElementById("search-btn");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
-const LEAVE_DELAY = 2500; // 2.5s linger in Today/Active before sliding out
+const LEAVE_DELAY = 2500;
 const MAX_LENGTH = 100;
 
 /* State */
 let tasks = [];
-let filter = "all"; // "all" | "today" | "active" | "completed"
+let filter = "all";
 let query = "";
 let pendingDelete = null;
 let selectedId = null;
@@ -82,7 +82,7 @@ function dueClass(iso) {
   return "";
 }
 
-/* Helpers */
+/* ---------- Helpers ---------- */
 const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -104,7 +104,7 @@ function load() {
   });
 }
 
-/* Normalize for search */
+/* ---------- Search helpers ---------- */
 function normalize(str) {
   return str
     .toLowerCase()
@@ -120,7 +120,6 @@ function matchesQuery(task, tokens) {
   return tokens.every((tok) => haystack.includes(tok));
 }
 
-/* Highlight matches (XSS-safe) */
 function highlight(text, tokens) {
   if (!tokens.length) return document.createTextNode(text);
   const frag = document.createDocumentFragment();
@@ -160,7 +159,7 @@ function highlight(text, tokens) {
   return frag;
 }
 
-/* Filtering */
+/* ---------- Filtering ---------- */
 function visibleTasks() {
   const tokens = tokenize(query);
   let list = tasks;
@@ -168,19 +167,15 @@ function visibleTasks() {
   if (filter === "today") {
     const today = todayISO();
     list = list.filter((t) => !t.done && t.dueAt && t.dueAt <= today);
-    // Today view gets sorted by due date (that's the point of the view)
     list = [...list].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   } else if (filter === "active") {
     list = list.filter((t) => !t.done);
-    // Preserve original insertion order — no sorting
   } else if (filter === "completed") {
     list = list.filter((t) => t.done);
   }
-  // "all" — preserve original insertion order
 
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
 
-  // Keep tasks that are animating out visible
   if (pendingLeaveIds.size) {
     for (const id of pendingLeaveIds) {
       const t = tasks.find((x) => x.id === id);
@@ -191,7 +186,7 @@ function visibleTasks() {
   return { list, tokens };
 }
 
-/* Rendering */
+/* ---------- Rendering ---------- */
 function render() {
   const { list, tokens } = visibleTasks();
   listEl.innerHTML = "";
@@ -201,12 +196,6 @@ function render() {
     li.className = "task" + (task.done ? " checked" : "");
     if (task.id === selectedId) li.classList.add("is-selected");
     if (pendingLeaveIds.has(task.id)) li.classList.add("is-leaving");
-    if (task.dueAt) {
-      li.classList.add("has-due");
-      const cls = dueClass(task.dueAt);
-      if (cls === "is-overdue") li.classList.add("is-overdue-row");
-      if (cls === "is-today") li.classList.add("is-today-row");
-    }
     li.dataset.id = task.id;
     li.tabIndex = 0;
     li.setAttribute("role", "listitem");
@@ -216,14 +205,13 @@ function render() {
     check.className = "task__check";
     check.setAttribute("aria-hidden", "true");
 
-    // Body wraps text + due chip
-    const body = document.createElement("div");
-    body.className = "task__body";
-
     const text = document.createElement("span");
     text.className = "task__text";
     text.appendChild(highlight(task.text, tokens));
-    body.appendChild(text);
+
+    // Right slot: [due chip] [actions]
+    const slot = document.createElement("div");
+    slot.className = "task__slot";
 
     if (task.dueAt) {
       const due = document.createElement("span");
@@ -234,10 +222,9 @@ function render() {
           : "fa-calendar-day";
       due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
       due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
-      body.appendChild(due);
+      slot.appendChild(due);
     }
 
-    // Actions
     const actions = document.createElement("div");
     actions.className = "task__actions";
 
@@ -251,7 +238,6 @@ function render() {
     );
     dateBtn.title = "Set due date (D)";
     dateBtn.innerHTML = '<i class="far fa-calendar" aria-hidden="true"></i>';
-    // Direct listener — bypasses delegation, fixes click issue
     dateBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -285,12 +271,13 @@ function render() {
     });
 
     actions.append(dateBtn, edit, del);
+    slot.appendChild(actions);
 
-    li.append(check, body, actions);
+    li.append(check, text, slot);
     listEl.appendChild(li);
   });
 
-  // Progress ring — ALL tasks
+  // Progress ring
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
@@ -321,7 +308,7 @@ function render() {
   }
 }
 
-/* Actions */
+/* ---------- Actions ---------- */
 function addTask() {
   const text = inputBox.value.trim();
   if (!text) {
@@ -350,7 +337,6 @@ function toggleTask(id) {
   task.completedAt = task.done ? Date.now() : null;
   save();
 
-  // In Today or Active, a newly done task lingers before leaving the view
   const leavesView = task.done && (filter === "today" || filter === "active");
 
   if (leavesView) {
@@ -385,17 +371,16 @@ function setDueDate(id, iso) {
   notify(iso ? "Due date set" : "Due date cleared");
 }
 
-/* Inline edit */
+/* ---------- Inline edit ---------- */
 function startEdit(li) {
   if (!li || li.classList.contains("is-editing")) return;
   const id = li.dataset.id;
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
 
-  const bodyEl = li.querySelector(".task__body");
   const textEl = li.querySelector(".task__text");
-  const actions = li.querySelector(".task__actions");
-  if (!textEl || !bodyEl) return;
+  const slot = li.querySelector(".task__slot");
+  if (!textEl) return;
 
   li.classList.add("is-editing");
 
@@ -409,7 +394,7 @@ function startEdit(li) {
   input.spellcheck = false;
 
   textEl.replaceWith(input);
-  if (actions) actions.hidden = true;
+  if (slot) slot.hidden = true;
 
   input.focus();
   const len = input.value.length;
@@ -425,7 +410,7 @@ function startEdit(li) {
     if (finished) return;
     finished = true;
     li.classList.remove("is-editing");
-    if (actions) actions.hidden = false;
+    if (slot) slot.hidden = false;
     render();
   }
   input.addEventListener("keydown", (e) => {
@@ -441,7 +426,7 @@ function startEdit(li) {
   input.addEventListener("click", (e) => e.stopPropagation());
 }
 
-/* Delete with undo */
+/* ---------- Delete with undo ---------- */
 function deleteTask(id) {
   const index = tasks.findIndex((t) => t.id === id);
   if (index === -1) return;
@@ -487,7 +472,7 @@ function setFilter(next) {
   render();
 }
 
-/* Search */
+/* ---------- Search ---------- */
 function openSearch() {
   if (!searchBar) return;
   searchBar.hidden = false;
@@ -514,7 +499,7 @@ function setQuery(next) {
   render();
 }
 
-/* Selection */
+/* ---------- Selection ---------- */
 function selectTask(id, { scroll = true } = {}) {
   selectedId = id;
   listEl.querySelectorAll(".task").forEach((li) => {
@@ -548,7 +533,7 @@ function getSelectedLi() {
   return listEl.querySelector(`.task[data-id="${selectedId}"]`);
 }
 
-/* Date popover */
+/* ---------- Date popover ---------- */
 function closeDatePopover() {
   if (openPopover?.el) openPopover.el.remove();
   openPopover = null;
@@ -622,7 +607,6 @@ function openDatePopover(anchorEl, taskId) {
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };
 
-  // Position near anchor
   const rect = anchorEl.getBoundingClientRect();
   const popRect = pop.getBoundingClientRect();
   const vw = window.innerWidth;
@@ -642,7 +626,7 @@ function openDatePopover(anchorEl, taskId) {
   requestAnimationFrame(() => dateInput.focus());
 }
 
-/* Shortcuts overlay */
+/* ---------- Shortcuts overlay ---------- */
 function openShortcuts() {
   shortcutsEl.hidden = false;
   document.body.style.overflow = "hidden";
@@ -656,7 +640,7 @@ function toggleShortcuts() {
   else closeShortcuts();
 }
 
-/* Notification */
+/* ---------- Notification ---------- */
 function notify(message, type = "success", action = null) {
   const el = document.createElement("div");
   el.className = `notification notification--${type}`;
@@ -696,7 +680,7 @@ function showUndoToast() {
   notify("Task deleted", "success", { label: "Undo", onClick: undoDelete });
 }
 
-/* Theme */
+/* ---------- Theme ---------- */
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   try {
@@ -714,10 +698,7 @@ window
     applyTheme(e.matches ? "light" : "dark");
   });
 
-/* ---------- List interaction ----------
-   Only handles the row body click (toggle) and selection.
-   Buttons have their own direct listeners set up in render().
-*/
+/* ---------- List interaction ---------- */
 composer.addEventListener("submit", (e) => {
   e.preventDefault();
   addTask();
@@ -727,9 +708,6 @@ listEl.addEventListener("click", (e) => {
   const li = e.target.closest(".task");
   if (!li) return;
   if (li.classList.contains("is-editing")) return;
-
-  // If the click was on an action button, its own listener already
-  // handled it (and called stopPropagation). But be safe:
   if (e.target.closest("[data-action]")) return;
 
   selectTask(li.dataset.id, { scroll: false });
@@ -782,26 +760,21 @@ shortcutsEl?.addEventListener("click", (e) => {
 
 /* ---------- Click outside ---------- */
 document.addEventListener("click", (e) => {
-  // Popover close
   if (openPopover && !e.target.closest(".date-popover")) {
     closeDatePopover();
   }
 
-  // Clicks on a task are handled by the list listener — bail here
   if (e.target.closest(".task")) return;
 
-  // Search bar close
   const insideSearch = e.target.closest(".search");
   const onSearchBtn = e.target.closest("#search-btn");
   if (!insideSearch && !onSearchBtn) {
     if (searchBar && !searchBar.hidden && !query) closeSearch();
   }
 
-  // Shortcuts overlay
   if (e.target.closest("#shortcuts")) return;
   if (e.target.closest("#shortcuts-btn")) return;
 
-  // Clear selection
   if (selectedId) selectTask(null);
 });
 

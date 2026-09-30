@@ -561,7 +561,7 @@ a {
   font-size: 0.7rem;
 }
 
-/* Task list — the only scrollable region */
+/* Task list */
 .tasks {
   list-style: none;
   display: flex;
@@ -592,7 +592,7 @@ a {
 /* Task */
 .task {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 12px 12px 12px 14px;
   background: var(--surface-soft);
@@ -661,7 +661,7 @@ a {
   color: var(--text-muted);
 }
 
-/* Checkbox — aligned to top of the row */
+/* Checkbox */
 .task__check {
   position: relative;
   width: 22px;
@@ -673,7 +673,6 @@ a {
   transition: var(--transition);
   display: grid;
   place-items: center;
-  margin-top: 1px;
 }
 
 .task__check::after {
@@ -700,19 +699,12 @@ a {
   transform: rotate(-45deg) scale(1);
 }
 
-/* Body — wraps text + due chip on separate lines */
-.task__body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
 .task__text {
+  flex: 1;
   font-size: 0.94rem;
   color: var(--text);
-  line-height: 1.35;
+  line-height: 1.4;
+  min-width: 0;
   word-break: break-word;
 }
 
@@ -730,26 +722,40 @@ a {
   font-weight: 600;
 }
 
-/* Due chip — sits below the text as a second line */
+/* Right slot — chip stays visible, actions
+   expand beside it on hover */
+.task__slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  height: 30px;
+}
+
+/* Due chip — always visible at the end of the row */
 .task__due {
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: var(--radius-pill);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   color: var(--text-muted);
   white-space: nowrap;
-  transition: var(--transition);
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
 }
 
 .task__due i {
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   opacity: 0.85;
 }
 
@@ -778,41 +784,26 @@ a {
   border-color: var(--line);
 }
 
-/* Left accent bar for tasks with due dates */
-.task.has-due::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 18%;
-  bottom: 18%;
-  width: 3px;
-  border-radius: 3px;
-  background: var(--text-dim);
-  opacity: 0.7;
-  transition: var(--transition);
-}
-
-.task.has-due.is-overdue-row::before {
-  background: var(--danger);
-  opacity: 1;
-}
-
-.task.has-due.is-today-row::before {
-  background: var(--magenta);
-  opacity: 1;
-}
-
-/* ============================================
-   Task actions — fixed width reservation
-   ============================================ */
+/* Task actions — collapsed to 0 width when idle,
+   expand on hover so the chip slides left */
 .task__actions {
   display: flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  min-width: 96px;
-  justify-content: flex-end;
-  margin-top: -2px;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transition:
+    max-width 0.32s var(--ease),
+    opacity 0.22s var(--ease);
+}
+
+.task:hover .task__actions,
+.task:focus-within .task__actions,
+.task.is-selected .task__actions {
+  max-width: 100px;
+  opacity: 1;
 }
 
 .task__action {
@@ -823,21 +814,14 @@ a {
   place-items: center;
   color: var(--text-dim);
   font-size: 0.8rem;
-  opacity: 0;
-  transition: var(--transition);
   flex-shrink: 0;
-  /* Ensure clicks register reliably */
-  pointer-events: auto;
-}
-
-.task:hover .task__action,
-.task:focus-within .task__action,
-.task.is-selected .task__action {
-  opacity: 1;
+  transition:
+    background-color 0.2s var(--ease),
+    color 0.2s var(--ease),
+    transform 0.2s var(--ease);
 }
 
 .task__action:focus-visible {
-  opacity: 1;
   outline: 2px solid var(--magenta);
   outline-offset: 2px;
 }
@@ -1262,7 +1246,7 @@ a {
   }
 }
 
-/* Smooth theme transitions */
+/* Theme transitions */
 body,
 .card,
 .task,
@@ -1330,18 +1314,15 @@ body,
     padding: 8px 4px;
   }
 
-  /* On mobile actions are always visible */
+  /* On mobile, always show the actions; chip sits to their left */
   .task__actions {
-    min-width: 0;
-  }
-
-  .task__action {
+    max-width: 100px;
     opacity: 1;
   }
 
   .task__due {
-    font-size: 0.66rem;
-    padding: 2px 6px;
+    font-size: 0.68rem;
+    padding: 2px 7px;
   }
 
   .notification {
