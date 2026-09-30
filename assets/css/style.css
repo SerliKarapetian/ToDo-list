@@ -1,4 +1,4 @@
-/*Tokens - Dark (Default)*/
+/* Tokens — Dark (default) */
 :root,
 [data-theme="dark"] {
   --navy: #1b2137;
@@ -43,7 +43,7 @@
   --transition: all 0.25s var(--ease);
 }
 
-/*Tokens — Light*/
+/* Tokens — Light */
 [data-theme="light"] {
   --navy: #f7f4ee;
   --navy-2: #ffffff;
@@ -77,7 +77,7 @@
   --shadow-lg: 0 30px 70px -25px rgba(27, 33, 55, 0.22);
 }
 
-/*Reset & Base*/
+/* Reset & Base */
 *,
 *::before,
 *::after {
@@ -141,7 +141,7 @@ a {
   color: var(--magenta);
 }
 
-/*Card*/
+/* Card */
 .card {
   position: relative;
   width: 100%;
@@ -183,7 +183,7 @@ a {
   }
 }
 
-/*Header*/
+/* Header */
 .card__header {
   display: flex;
   align-items: center;
@@ -235,7 +235,7 @@ a {
   flex-shrink: 0;
 }
 
-/*Icon buttons*/
+/* Icon buttons */
 .icon-btn {
   width: 42px;
   height: 42px;
@@ -261,7 +261,7 @@ a {
   transform: translateY(0);
 }
 
-/*Theme toggle*/
+/* Theme toggle */
 .theme-toggle {
   position: relative;
   width: 42px;
@@ -317,7 +317,7 @@ a {
   opacity: 1;
 }
 
-/*Progress ring*/
+/* Progress ring */
 .progress {
   position: relative;
   width: 54px;
@@ -359,7 +359,7 @@ a {
   pointer-events: none;
 }
 
-/*Composer*/
+/* Composer */
 .composer {
   display: flex;
   align-items: center;
@@ -428,7 +428,7 @@ a {
   transform: scale(0.95);
 }
 
-/*Search bar (hidden until triggered)*/
+/* Search bar (hidden until triggered) */
 .search {
   display: flex;
   align-items: center;
@@ -512,7 +512,7 @@ a {
   transform: rotate(90deg);
 }
 
-/*Filters + hint*/
+/* Filters + hint */
 .filters {
   display: flex;
   gap: 4px;
@@ -561,7 +561,7 @@ a {
   font-size: 0.7rem;
 }
 
-/*Task list — the only scrollable region*/
+/* Task list — the only scrollable region */
 .tasks {
   list-style: none;
   display: flex;
@@ -589,12 +589,12 @@ a {
   display: none;
 }
 
-/*Task*/
+/* Task */
 .task {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px 10px 14px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -640,7 +640,6 @@ a {
 .task:hover {
   background: var(--surface-hover);
   border-color: var(--line-strong);
-  transform: translateY(-1px);
 }
 
 /* Soft selection tint (replaces outline) */
@@ -662,7 +661,7 @@ a {
   color: var(--text-muted);
 }
 
-/* Custom checkbox */
+/* Checkbox — aligned to top of the row */
 .task__check {
   position: relative;
   width: 22px;
@@ -674,6 +673,7 @@ a {
   transition: var(--transition);
   display: grid;
   place-items: center;
+  margin-top: 1px;
 }
 
 .task__check::after {
@@ -700,12 +700,20 @@ a {
   transform: rotate(-45deg) scale(1);
 }
 
-.task__text {
+/* Body — wraps text + due chip on separate lines */
+.task__body {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.task__text {
   font-size: 0.94rem;
   color: var(--text);
-  line-height: 1.4;
-  min-width: 0;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .task.checked .task__text {
@@ -722,30 +730,26 @@ a {
   font-weight: 600;
 }
 
-/*Due date chip — stable placement between
-   the text and the action buttons*/
+/* Due chip — sits below the text as a second line */
 .task__due {
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border-radius: var(--radius-pill);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   background: var(--surface-soft);
   border: 1px solid var(--line);
   color: var(--text-muted);
   white-space: nowrap;
-  flex-shrink: 0;
   transition: var(--transition);
-  /* Pin to the right edge of the text column so it doesn't drift */
-  margin-left: auto;
-  margin-right: 4px;
 }
 
 .task__due i {
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   opacity: 0.85;
 }
 
@@ -779,8 +783,8 @@ a {
   content: "";
   position: absolute;
   left: 0;
-  top: 22%;
-  bottom: 22%;
+  top: 18%;
+  bottom: 18%;
   width: 3px;
   border-radius: 3px;
   background: var(--text-dim);
@@ -798,8 +802,9 @@ a {
   opacity: 1;
 }
 
-/*Task actions — space reserved so the chip
-   never shifts when they fade in/out*/
+/* ============================================
+   Task actions — fixed width reservation
+   ============================================ */
 .task__actions {
   display: flex;
   align-items: center;
@@ -807,6 +812,7 @@ a {
   flex-shrink: 0;
   min-width: 96px;
   justify-content: flex-end;
+  margin-top: -2px;
 }
 
 .task__action {
@@ -820,6 +826,8 @@ a {
   opacity: 0;
   transition: var(--transition);
   flex-shrink: 0;
+  /* Ensure clicks register reliably */
+  pointer-events: auto;
 }
 
 .task:hover .task__action,
@@ -852,7 +860,7 @@ a {
   transform: rotate(8deg);
 }
 
-/*Inline edit input*/
+/* Inline edit */
 .task.is-editing {
   cursor: default;
 }
@@ -872,7 +880,7 @@ a {
   line-height: 1.4;
 }
 
-/*Date popover*/
+/* Date popover */
 .date-popover {
   position: fixed;
   z-index: 1050;
@@ -957,7 +965,7 @@ a {
   box-shadow: 0 0 0 3px var(--magenta-soft);
 }
 
-/*Empty state*/
+/* Empty state */
 .empty {
   flex: 1;
   display: flex;
@@ -994,7 +1002,7 @@ a {
   color: var(--text-muted);
 }
 
-/*Credits (inside card footer)*/
+/* Credits */
 .credits {
   margin-top: 16px;
   padding-top: 14px;
@@ -1029,14 +1037,14 @@ a {
   border-radius: 3px;
 }
 
-/*Focus visible*/
+/* Focus visible */
 :focus-visible {
   outline: 2px solid var(--magenta);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
-/*Notifications*/
+/* Notifications */
 .notification {
   position: fixed;
   top: 20px;
@@ -1127,7 +1135,7 @@ a {
   }
 }
 
-/*Shortcuts cheatsheet (wide rectangle)*/
+/* Shortcuts cheatsheet (wide rectangle) */
 .shortcuts {
   position: fixed;
   inset: 0;
@@ -1254,7 +1262,7 @@ a {
   }
 }
 
-/*Smooth theme transitions*/
+/* Smooth theme transitions */
 body,
 .card,
 .task,
@@ -1276,7 +1284,7 @@ body,
     color 0.35s var(--ease);
 }
 
-/*Responsive*/
+/* Responsive */
 @media (max-width: 700px) {
   .shortcuts__grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1322,7 +1330,7 @@ body,
     padding: 8px 4px;
   }
 
-  /* On mobile actions are always visible, so no min-width reservation */
+  /* On mobile actions are always visible */
   .task__actions {
     min-width: 0;
   }
@@ -1332,9 +1340,8 @@ body,
   }
 
   .task__due {
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     padding: 2px 6px;
-    margin-right: 2px;
   }
 
   .notification {
@@ -1359,7 +1366,7 @@ body,
   }
 }
 
-/*Reduced motion*/
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

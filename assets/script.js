@@ -19,7 +19,7 @@ const searchBtn = document.getElementById("search-btn");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
-const LEAVE_DELAY = 550; // ms — how long a completed task lingers in Today/Active
+const LEAVE_DELAY = 2500; // 2.5s linger in Today/Active before sliding out
 const MAX_LENGTH = 100;
 
 /* State */
@@ -29,9 +29,9 @@ let query = "";
 let pendingDelete = null;
 let selectedId = null;
 let openPopover = null;
-let pendingLeaveIds = new Set(); // tasks animating out in Today/Active
+let pendingLeaveIds = new Set();
 
-/* Date helpers */
+/* ---------- Date helpers ---------- */
 function todayISO() {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
@@ -160,7 +160,7 @@ function highlight(text, tokens) {
   return frag;
 }
 
-/* Filtering + sorting */
+/* Filtering */
 function visibleTasks() {
   const tokens = tokenize(query);
   let list = tasks;
@@ -168,33 +168,27 @@ function visibleTasks() {
   if (filter === "today") {
     const today = todayISO();
     list = list.filter((t) => !t.done && t.dueAt && t.dueAt <= today);
+    // Today view gets sorted by due date (that's the point of the view)
+    list = [...list].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   } else if (filter === "active") {
     list = list.filter((t) => !t.done);
+    // Preserve original insertion order — no sorting
   } else if (filter === "completed") {
     list = list.filter((t) => t.done);
   }
+  // "all" — preserve original insertion order
 
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
 
-  // Keep tasks that are animating out visible until the animation ends
+  // Keep tasks that are animating out visible
   if (pendingLeaveIds.size) {
-    const pending = tasks.filter((t) => pendingLeaveIds.has(t.id));
-    for (const t of pending) {
-      if (!list.find((x) => x.id === t.id)) list.push(t);
+    for (const id of pendingLeaveIds) {
+      const t = tasks.find((x) => x.id === id);
+      if (t && !list.find((x) => x.id === id)) list.push(t);
     }
   }
 
-  return { list: sortTasks(list), tokens };
-}
-
-function sortTasks(list) {
-  return [...list].sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1;
-    if (a.dueAt && !b.dueAt) return -1;
-    if (!a.dueAt && b.dueAt) return 1;
-    if (a.dueAt && b.dueAt) return a.dueAt.localeCompare(b.dueAt);
-    return 0;
-  });
+  return { list, tokens };
 }
 
 /* Rendering */
@@ -222,23 +216,28 @@ function render() {
     check.className = "task__check";
     check.setAttribute("aria-hidden", "true");
 
+    // Body wraps text + due chip
+    const body = document.createElement("div");
+    body.className = "task__body";
+
     const text = document.createElement("span");
     text.className = "task__text";
     text.appendChild(highlight(task.text, tokens));
+    body.appendChild(text);
 
-    // Due chip — rendered in its own slot right after the text
-    let dueEl = null;
     if (task.dueAt) {
-      dueEl = document.createElement("span");
-      dueEl.className = "task__due " + dueClass(task.dueAt);
+      const due = document.createElement("span");
+      due.className = "task__due " + dueClass(task.dueAt);
       const iconCls =
         diffDays(task.dueAt) < 0
           ? "fa-triangle-exclamation"
           : "fa-calendar-day";
-      dueEl.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
-      dueEl.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+      due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+      due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+      body.appendChild(due);
     }
 
+    // Actions
     const actions = document.createElement("div");
     actions.className = "task__actions";
 
@@ -252,6 +251,12 @@ function render() {
     );
     dateBtn.title = "Set due date (D)";
     dateBtn.innerHTML = '<i class="far fa-calendar" aria-hidden="true"></i>';
+    // Direct listener — bypasses delegation, fixes click issue
+    dateBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openDatePopover(dateBtn, task.id);
+    });
 
     const edit = document.createElement("button");
     edit.type = "button";
@@ -260,6 +265,11 @@ function render() {
     edit.setAttribute("aria-label", "Edit task");
     edit.title = "Edit (E)";
     edit.innerHTML = '<i class="fas fa-pen" aria-hidden="true"></i>';
+    edit.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      startEdit(li);
+    });
 
     const del = document.createElement("button");
     del.type = "button";
@@ -268,12 +278,15 @@ function render() {
     del.setAttribute("aria-label", "Delete task");
     del.title = "Delete (Del)";
     del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+    del.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteTask(task.id);
+    });
 
     actions.append(dateBtn, edit, del);
 
-    li.append(check, text);
-    if (dueEl) li.appendChild(dueEl);
-    li.appendChild(actions);
+    li.append(check, body, actions);
     listEl.appendChild(li);
   });
 
@@ -333,17 +346,14 @@ function toggleTask(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
 
-  const wasDone = task.done;
   task.done = !task.done;
   task.completedAt = task.done ? Date.now() : null;
   save();
 
-  // In Today or Active, a task that just became done should linger
-  // briefly so the user sees the checkmark land before it leaves.
+  // In Today or Active, a newly done task lingers before leaving the view
   const leavesView = task.done && (filter === "today" || filter === "active");
 
   if (leavesView) {
-    // Mark leaving, render once (row keeps .checked + .is-leaving)
     pendingLeaveIds.add(task.id);
     render();
     setTimeout(() => {
@@ -382,9 +392,10 @@ function startEdit(li) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
 
+  const bodyEl = li.querySelector(".task__body");
   const textEl = li.querySelector(".task__text");
   const actions = li.querySelector(".task__actions");
-  if (!textEl) return;
+  if (!textEl || !bodyEl) return;
 
   li.classList.add("is-editing");
 
@@ -608,13 +619,10 @@ function openDatePopover(anchorEl, taskId) {
     );
   }
 
-  // Mark the popover so outside-click logic can ignore the *originating* click
-  pop.dataset.openedAt = Date.now();
-
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };
 
-  // Position near anchor, keep on screen
+  // Position near anchor
   const rect = anchorEl.getBoundingClientRect();
   const popRect = pop.getBoundingClientRect();
   const vw = window.innerWidth;
@@ -706,7 +714,10 @@ window
     applyTheme(e.matches ? "light" : "dark");
   });
 
-/* List interaction */
+/* ---------- List interaction ----------
+   Only handles the row body click (toggle) and selection.
+   Buttons have their own direct listeners set up in render().
+*/
 composer.addEventListener("submit", (e) => {
   e.preventDefault();
   addTask();
@@ -717,14 +728,9 @@ listEl.addEventListener("click", (e) => {
   if (!li) return;
   if (li.classList.contains("is-editing")) return;
 
-  const actionEl = e.target.closest("[data-action]");
-  if (actionEl) {
-    const action = actionEl.dataset.action;
-    if (action === "delete") deleteTask(li.dataset.id);
-    else if (action === "edit") startEdit(li);
-    else if (action === "date") openDatePopover(actionEl, li.dataset.id);
-    return;
-  }
+  // If the click was on an action button, its own listener already
+  // handled it (and called stopPropagation). But be safe:
+  if (e.target.closest("[data-action]")) return;
 
   selectTask(li.dataset.id, { scroll: false });
   toggleTask(li.dataset.id);
@@ -735,14 +741,14 @@ listEl.addEventListener("focusin", (e) => {
   if (li) selectTask(li.dataset.id, { scroll: false });
 });
 
-/* Filters */
+/* ---------- Filters ---------- */
 document
   .querySelectorAll(".filter")
   .forEach((btn) =>
     btn.addEventListener("click", () => setFilter(btn.dataset.filter)),
   );
 
-/* Search wiring */
+/* ---------- Search wiring ---------- */
 searchBtn?.addEventListener("click", (e) => {
   e.stopPropagation();
   if (searchBar.hidden) openSearch();
@@ -768,51 +774,38 @@ searchClear?.addEventListener("click", (e) => {
   searchInput.focus();
 });
 
-/* Shortcuts overlay triggers */
+/* ---------- Shortcuts overlay triggers ---------- */
 shortcutsBtn?.addEventListener("click", toggleShortcuts);
 shortcutsEl?.addEventListener("click", (e) => {
   if (e.target.closest("[data-close]")) closeShortcuts();
 });
 
-/* Click outside
-   Only ONE document-level click handler. It:
-   1. Closes the date popover unless the click landed inside it.
-   2. Closes the search bar if empty.
-   3. Clears task selection UNLESS the click is on a task (the task
-      click handler already manages selection) or on UI controls.
-*/
+/* ---------- Click outside ---------- */
 document.addEventListener("click", (e) => {
-  // 1) Popover
-  if (openPopover) {
-    if (!e.target.closest(".date-popover")) {
-      closeDatePopover();
-    }
+  // Popover close
+  if (openPopover && !e.target.closest(".date-popover")) {
+    closeDatePopover();
   }
 
-  // If the click is on a task row, don't do anything else here —
-  // the listEl click listener handles selection and toggle.
+  // Clicks on a task are handled by the list listener — bail here
   if (e.target.closest(".task")) return;
 
-  // 2) Search
+  // Search bar close
   const insideSearch = e.target.closest(".search");
   const onSearchBtn = e.target.closest("#search-btn");
   if (!insideSearch && !onSearchBtn) {
-    if (searchBar && !searchBar.hidden && !query) {
-      closeSearch();
-    }
+    if (searchBar && !searchBar.hidden && !query) closeSearch();
   }
 
-  // 3) Shortcuts overlay toggles
+  // Shortcuts overlay
   if (e.target.closest("#shortcuts")) return;
   if (e.target.closest("#shortcuts-btn")) return;
 
-  // 4) Clear selection on any other click
-  if (selectedId) {
-    selectTask(null);
-  }
+  // Clear selection
+  if (selectedId) selectTask(null);
 });
 
-/* Keyboard */
+/* ---------- Keyboard ---------- */
 function isTypingTarget(el) {
   if (!el) return false;
   const tag = el.tagName;
@@ -963,7 +956,6 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-/* Commit pending delete before leaving */
 window.addEventListener("beforeunload", () => {
   if (pendingDelete) {
     clearTimeout(pendingDelete.timeoutId);
@@ -972,14 +964,12 @@ window.addEventListener("beforeunload", () => {
   }
 });
 
-/* Today label */
 todayLabel.textContent = new Date().toLocaleDateString(undefined, {
   weekday: "long",
   month: "short",
   day: "numeric",
 });
 
-/* Init */
 load();
 render();
 inputBox.focus();
