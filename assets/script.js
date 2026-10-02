@@ -21,6 +21,7 @@ const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
 const LEAVE_DURATION = 550;
 const MAX_LENGTH = 100;
+const RECUR_FLASH = 700;
 
 /* State */
 let tasks = [];
@@ -49,6 +50,40 @@ function addDaysISO(iso, days) {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function addMonthsISO(iso, months) {
+  const d = new Date(iso + "T00:00:00");
+  const day = d.getDate();
+  d.setDate(1); // avoid rolling into next month when adding
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dayStr = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dayStr}`;
+}
+
+/**
+ * Compute the next due date for a recurrence.
+ * @param {string} currentISO - the current due date (YYYY-MM-DD)
+ * @param {"daily"|"weekly"|"monthly"} recurrence
+ * @returns {string} next due date in YYYY-MM-DD
+ */
+function nextOccurrence(currentISO, recurrence) {
+  if (!currentISO) currentISO = todayISO();
+  if (recurrence === "daily") return addDaysISO(currentISO, 1);
+  if (recurrence === "weekly") return addDaysISO(currentISO, 7);
+  if (recurrence === "monthly") return addMonthsISO(currentISO, 1);
+  return currentISO;
+}
+
+function recurLabel(recurrence) {
+  if (recurrence === "daily") return "Daily";
+  if (recurrence === "weekly") return "Weekly";
+  if (recurrence === "monthly") return "Monthly";
+  return "";
 }
 
 function diffDays(iso) {
@@ -117,6 +152,7 @@ function load() {
   tasks.forEach((t, i) => {
     if (!("dueAt" in t)) t.dueAt = null;
     if (typeof t.order !== "number") t.order = i;
+    if (!("recurrence" in t)) t.recurrence = null;
   });
 }
 
@@ -214,8 +250,7 @@ function buildTaskRow(task, tokens) {
   li.setAttribute("role", "listitem");
   li.setAttribute("aria-checked", String(task.done));
 
-  // Grip — only rendered when reordering is allowed. Sortable uses
-  // it as the drag handle.
+  // Grip — only rendered when reordering is allowed.
   if (canReorder()) {
     const grip = document.createElement("span");
     grip.className = "task__grip";
@@ -232,6 +267,18 @@ function buildTaskRow(task, tokens) {
   const text = document.createElement("span");
   text.className = "task__text";
   text.appendChild(highlight(task.text, tokens));
+
+  // Recurrence chip (only when recurrence is set)
+  let recurEl = null;
+  if (task.recurrence) {
+    recurEl = document.createElement("span");
+    recurEl.className = "task__recur";
+    recurEl.title = `Repeats ${task.recurrence}`;
+    recurEl.innerHTML = `<i class="fas fa-arrows-rotate" aria-hidden="true"></i>`;
+    recurEl.appendChild(
+      document.createTextNode(" " + recurLabel(task.recurrence)),
+    );
+  }
 
   const slot = document.createElement("div");
   slot.className = "task__slot";
@@ -294,7 +341,9 @@ function buildTaskRow(task, tokens) {
   actions.append(dateBtn, edit, del);
   slot.appendChild(actions);
 
-  li.append(check, text, slot);
+  li.append(check, text);
+  if (recurEl) li.appendChild(recurEl);
+  li.appendChild(slot);
   return li;
 }
 
@@ -310,6 +359,33 @@ function updateTaskRow(li, task, tokens) {
     textEl.appendChild(highlight(task.text, tokens));
   }
 
+  // Recurrence chip
+  const existingRecur = li.querySelector(".task__recur");
+  if (task.recurrence) {
+    if (existingRecur) {
+      existingRecur.title = `Repeats ${task.recurrence}`;
+      existingRecur.innerHTML = `<i class="fas fa-arrows-rotate" aria-hidden="true"></i>`;
+      existingRecur.appendChild(
+        document.createTextNode(" " + recurLabel(task.recurrence)),
+      );
+    } else {
+      const recur = document.createElement("span");
+      recur.className = "task__recur";
+      recur.title = `Repeats ${task.recurrence}`;
+      recur.innerHTML = `<i class="fas fa-arrows-rotate" aria-hidden="true"></i>`;
+      recur.appendChild(
+        document.createTextNode(" " + recurLabel(task.recurrence)),
+      );
+      // Insert before the slot so it sits in the same place as
+      // buildTaskRow.
+      const slotEl = li.querySelector(".task__slot");
+      li.insertBefore(recur, slotEl);
+    }
+  } else if (existingRecur) {
+    existingRecur.remove();
+  }
+
+  // Due chip
   const slot = li.querySelector(".task__slot");
   if (slot) {
     const existingChip = slot.querySelector(".task__due");
@@ -391,7 +467,6 @@ function render() {
 
   if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
 
-  // Ensure Sortable is enabled / disabled to match the current state.
   syncSortable();
 }
 
@@ -499,19 +574,15 @@ function syncSortable() {
       animation: 180,
       handle: ".task__grip",
       draggable: ".task",
-
       ghostClass: "task--ghost",
       dragClass: "task--dragging",
-
       filter: ".task.is-editing, .task.is-leaving",
       preventOnFilter: false,
-
       forceAutoScrollFallback: true,
       scroll: listEl,
       scrollSensitivity: 60,
       scrollSpeed: 14,
       bubbleScroll: false,
-
       onEnd: () => {
         syncOrderFromDom();
       },
@@ -539,7 +610,6 @@ function syncOrderFromDom() {
   });
 
   save();
-
   render();
 }
 
@@ -562,6 +632,7 @@ function addTask() {
     completedAt: null,
     dueAt: null,
     order: minOrder - 1,
+    recurrence: null,
   });
   inputBox.value = "";
   save();
@@ -573,6 +644,27 @@ function toggleTask(id) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
 
+  // Recurring task: advance to next occurrence
+  if (task.recurrence && !task.done) {
+    const li = listEl.querySelector(`.task[data-id="${id}"]`);
+    if (!li) {
+      toggleRecurring(task);
+      return;
+    }
+
+    // Flash the checkbox as done, then reset with the new date.
+    li.classList.add("checked");
+    li.setAttribute("aria-checked", "true");
+
+    setTimeout(() => {
+      toggleRecurring(task);
+      // If the filter is "today" and the new date is beyond today,
+      // the render() inside toggleRecurring will remove the row.
+    }, RECUR_FLASH);
+    return;
+  }
+
+  // Normal task: existing behavior
   task.done = !task.done;
   task.completedAt = task.done ? Date.now() : null;
   save();
@@ -607,6 +699,24 @@ function toggleTask(id) {
   }
 }
 
+/* Advance a recurring task to its next occurrence. Called after the brief done-flash. */
+function toggleRecurring(task) {
+  // Compute the next due date relative to the current due date.
+  task.dueAt = nextOccurrence(task.dueAt, task.recurrence);
+  // Reset done state — the task lives on.
+  task.done = false;
+  task.completedAt = null;
+  save();
+
+  // Notify the user with a small toast.
+  notify(
+    `Next ${recurLabel(task.recurrence).toLowerCase()} · ${formatDue(task.dueAt)}`,
+    "success",
+  );
+
+  render();
+}
+
 function updateTaskText(id, text) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
@@ -622,10 +732,28 @@ function setDueDate(id, iso) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
   task.dueAt = iso || null;
+  // Clearing the date also clears the recurrence — can't recur
+  // without an anchor.
+  if (!iso && task.recurrence) {
+    task.recurrence = null;
+  }
   save();
   selectedId = null;
   render();
   notify(iso ? "Due date set" : "Due date cleared");
+}
+
+function setRecurrence(id, recurrence) {
+  const task = tasks.find((t) => t.id === id);
+  if (!task) return;
+  // Must have a due date to recur.
+  if (recurrence && !task.dueAt) {
+    task.dueAt = todayISO();
+  }
+  task.recurrence = recurrence || null;
+  save();
+  render();
+  notify(recurrence ? `Repeats ${recurrence}` : "Repeat cleared");
 }
 
 /* Inline edit */
@@ -823,7 +951,7 @@ function getSelectedLi() {
   return listEl.querySelector(`.task[data-id="${selectedId}"]`);
 }
 
-/* Date popover */
+/* Date popover (with recurrence picker) */
 function closeDatePopover() {
   if (openPopover?.el) openPopover.el.remove();
   openPopover = null;
@@ -838,8 +966,21 @@ function openDatePopover(anchorEl, taskId) {
   pop.className = "date-popover";
   pop.setAttribute("role", "menu");
 
-  const commitAndClose = (iso) => {
-    setDueDate(taskId, iso);
+  let workingDate = task.dueAt || "";
+  let workingRecur = task.recurrence || null;
+
+  const commitAndClose = () => {
+    const t = tasks.find((x) => x.id === taskId);
+    if (!t) {
+      closeDatePopover();
+      return;
+    }
+    t.dueAt = workingDate || null;
+    t.recurrence = workingDate ? workingRecur : null;
+    save();
+    selectedId = null;
+    render();
+    notify("Date updated");
     closeDatePopover();
   };
 
@@ -854,23 +995,29 @@ function openDatePopover(anchorEl, taskId) {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       onClick();
-      closeDatePopover();
     });
     return b;
   };
 
   const today = todayISO();
 
-  pop.appendChild(mkBtn("fa-sun", "Today", () => commitAndClose(today)));
   pop.appendChild(
-    mkBtn("fa-arrow-right", "Tomorrow", () =>
-      commitAndClose(addDaysISO(today, 1)),
-    ),
+    mkBtn("fa-sun", "Today", () => {
+      workingDate = today;
+      dateInput.value = today;
+    }),
   );
   pop.appendChild(
-    mkBtn("fa-forward", "Next week", () =>
-      commitAndClose(addDaysISO(today, 7)),
-    ),
+    mkBtn("fa-arrow-right", "Tomorrow", () => {
+      workingDate = addDaysISO(today, 1);
+      dateInput.value = workingDate;
+    }),
+  );
+  pop.appendChild(
+    mkBtn("fa-forward", "Next week", () => {
+      workingDate = addDaysISO(today, 7);
+      dateInput.value = workingDate;
+    }),
   );
 
   const d1 = document.createElement("div");
@@ -882,7 +1029,7 @@ function openDatePopover(anchorEl, taskId) {
 
   const dateInput = document.createElement("input");
   dateInput.type = "date";
-  dateInput.value = task.dueAt || "";
+  dateInput.value = workingDate;
   dateInput.addEventListener("click", (e) => e.stopPropagation());
 
   let typedSinceOpen = false;
@@ -892,9 +1039,13 @@ function openDatePopover(anchorEl, taskId) {
       e.preventDefault();
       e.stopPropagation();
       const v = dateInput.value;
-      if (v === "") commitAndClose(null);
-      else if (isValidISODate(v)) commitAndClose(v);
-      else {
+      if (v === "") {
+        workingDate = "";
+        commitAndClose();
+      } else if (isValidISODate(v)) {
+        workingDate = v;
+        commitAndClose();
+      } else {
         notify("Incomplete date", "error");
         dateInput.focus();
       }
@@ -911,30 +1062,102 @@ function openDatePopover(anchorEl, taskId) {
 
   dateInput.addEventListener("input", () => {
     typedSinceOpen = true;
+    // Keep the working date in sync as the user types.
+    workingDate = dateInput.value;
   });
 
   dateInput.addEventListener("change", () => {
     if (typedSinceOpen) return;
     const v = dateInput.value;
-    if (v && isValidISODate(v)) commitAndClose(v);
+    if (v && isValidISODate(v)) {
+      workingDate = v;
+    }
   });
 
   customWrap.appendChild(dateInput);
   pop.appendChild(customWrap);
 
-  const hint = document.createElement("p");
-  hint.className = "date-popover__hint";
-  hint.textContent = "Press Enter to save";
-  customWrap.appendChild(hint);
+  // Recurrence section
+  const dRecur = document.createElement("div");
+  dRecur.className = "date-popover__divider";
+  pop.appendChild(dRecur);
+
+  const recurLabelEl = document.createElement("p");
+  recurLabelEl.className = "date-popover__label";
+  recurLabelEl.textContent = "Repeat";
+  pop.appendChild(recurLabelEl);
+
+  const recurRow = document.createElement("div");
+  recurRow.className = "date-popover__recur";
+
+  const recurButtons = [];
+
+  const mkRecurBtn = (value, label) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "date-popover__recur-btn";
+    if (workingRecur === value) b.classList.add("is-active");
+    b.textContent = label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      // Toggle behaviour: clicking the active one clears it.
+      workingRecur = workingRecur === value ? null : value;
+      // Update active states in place.
+      recurButtons.forEach((btn) =>
+        btn.classList.toggle("is-active", btn.dataset.value === workingRecur),
+      );
+    });
+    b.dataset.value = value || "none";
+    recurButtons.push(b);
+    return b;
+  };
+
+  recurRow.appendChild(mkRecurBtn("daily", "Daily"));
+  recurRow.appendChild(mkRecurBtn("weekly", "Weekly"));
+  recurRow.appendChild(mkRecurBtn("monthly", "Monthly"));
+  recurRow.appendChild(mkRecurBtn(null, "None"));
+  pop.appendChild(recurRow);
+
+  // Footer actions
+  const footer = document.createElement("div");
+  footer.className = "date-popover__footer";
 
   if (task.dueAt) {
-    const d2 = document.createElement("div");
-    d2.className = "date-popover__divider";
-    pop.appendChild(d2);
-    pop.appendChild(
-      mkBtn("fa-trash-can", "Clear date", () => commitAndClose(null), true),
-    );
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className =
+      "date-popover__footer-btn date-popover__footer-btn--danger";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      workingDate = "";
+      workingRecur = null;
+      commitAndClose();
+    });
+    footer.appendChild(clearBtn);
+  } else {
+    // Spacer so the Done button sits on the right.
+    const spacer = document.createElement("span");
+    footer.appendChild(spacer);
   }
+
+  const doneBtn = document.createElement("button");
+  doneBtn.type = "button";
+  doneBtn.className =
+    "date-popover__footer-btn date-popover__footer-btn--primary";
+  doneBtn.textContent = "Done";
+  doneBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // If there's a date and a recurrence but no explicit date typed,
+    // default to today (a recurring task must have an anchor).
+    if (workingRecur && !workingDate) {
+      workingDate = todayISO();
+    }
+    commitAndClose();
+  });
+  footer.appendChild(doneBtn);
+
+  pop.appendChild(footer);
 
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };
@@ -1042,7 +1265,6 @@ listEl.addEventListener("click", (e) => {
   if (li.classList.contains("is-editing")) return;
   if (li.classList.contains("is-leaving")) return;
   if (e.target.closest("[data-action]")) return;
-  // Ignore clicks on the drag handle — they don't toggle the task.
   if (e.target.closest(".task__grip")) return;
 
   selectTask(li.dataset.id, { scroll: false });
