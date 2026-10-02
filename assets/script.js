@@ -496,29 +496,26 @@ function syncSortable() {
 
   if (shouldBeActive && !sortableInstance) {
     sortableInstance = new Sortable(listEl, {
-  animation: 180,
-  handle: ".task__grip",
-  draggable: ".task",
+      animation: 180,
+      handle: ".task__grip",
+      draggable: ".task",
 
-  // Placeholder left in the list at the source position.
-  ghostClass: "task--ghost",
-  // Element that follows the cursor.
-  dragClass: "task--dragging",
+      ghostClass: "task--ghost",
+      dragClass: "task--dragging",
 
-  filter: ".task.is-editing, .task.is-leaving",
-  preventOnFilter: false,
+      filter: ".task.is-editing, .task.is-leaving",
+      preventOnFilter: false,
 
-  // The critical fix for internal-container autoscroll.
-  forceAutoScrollFallback: true,
-  scroll: listEl,
-  scrollSensitivity: 60,
-  scrollSpeed: 14,
-  bubbleScroll: false,
+      forceAutoScrollFallback: true,
+      scroll: listEl,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      bubbleScroll: false,
 
-  onEnd: () => {
-    syncOrderFromDom();
-  },
-});
+      onEnd: () => {
+        syncOrderFromDom();
+      },
+    });
   } else if (!shouldBeActive && sortableInstance) {
     sortableInstance.destroy();
     sortableInstance = null;
