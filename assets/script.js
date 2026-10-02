@@ -966,8 +966,21 @@ function openDatePopover(anchorEl, taskId) {
   pop.className = "date-popover";
   pop.setAttribute("role", "menu");
 
-  const commitAndClose = (iso) => {
-    setDueDate(taskId, iso);
+  let workingDate = task.dueAt || "";
+  let workingRecur = task.recurrence || null;
+
+  const commitAndClose = () => {
+    const t = tasks.find((x) => x.id === taskId);
+    if (!t) {
+      closeDatePopover();
+      return;
+    }
+    t.dueAt = workingDate || null;
+    t.recurrence = workingDate ? workingRecur : null;
+    save();
+    selectedId = null;
+    render();
+    notify("Date updated");
     closeDatePopover();
   };
 
@@ -982,23 +995,29 @@ function openDatePopover(anchorEl, taskId) {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       onClick();
-      closeDatePopover();
     });
     return b;
   };
 
   const today = todayISO();
 
-  pop.appendChild(mkBtn("fa-sun", "Today", () => commitAndClose(today)));
   pop.appendChild(
-    mkBtn("fa-arrow-right", "Tomorrow", () =>
-      commitAndClose(addDaysISO(today, 1)),
-    ),
+    mkBtn("fa-sun", "Today", () => {
+      workingDate = today;
+      dateInput.value = today;
+    }),
   );
   pop.appendChild(
-    mkBtn("fa-forward", "Next week", () =>
-      commitAndClose(addDaysISO(today, 7)),
-    ),
+    mkBtn("fa-arrow-right", "Tomorrow", () => {
+      workingDate = addDaysISO(today, 1);
+      dateInput.value = workingDate;
+    }),
+  );
+  pop.appendChild(
+    mkBtn("fa-forward", "Next week", () => {
+      workingDate = addDaysISO(today, 7);
+      dateInput.value = workingDate;
+    }),
   );
 
   const d1 = document.createElement("div");
@@ -1010,7 +1029,7 @@ function openDatePopover(anchorEl, taskId) {
 
   const dateInput = document.createElement("input");
   dateInput.type = "date";
-  dateInput.value = task.dueAt || "";
+  dateInput.value = workingDate;
   dateInput.addEventListener("click", (e) => e.stopPropagation());
 
   let typedSinceOpen = false;
@@ -1020,9 +1039,13 @@ function openDatePopover(anchorEl, taskId) {
       e.preventDefault();
       e.stopPropagation();
       const v = dateInput.value;
-      if (v === "") commitAndClose(null);
-      else if (isValidISODate(v)) commitAndClose(v);
-      else {
+      if (v === "") {
+        workingDate = "";
+        commitAndClose();
+      } else if (isValidISODate(v)) {
+        workingDate = v;
+        commitAndClose();
+      } else {
         notify("Incomplete date", "error");
         dateInput.focus();
       }
@@ -1039,23 +1062,22 @@ function openDatePopover(anchorEl, taskId) {
 
   dateInput.addEventListener("input", () => {
     typedSinceOpen = true;
+    // Keep the working date in sync as the user types.
+    workingDate = dateInput.value;
   });
 
   dateInput.addEventListener("change", () => {
     if (typedSinceOpen) return;
     const v = dateInput.value;
-    if (v && isValidISODate(v)) commitAndClose(v);
+    if (v && isValidISODate(v)) {
+      workingDate = v;
+    }
   });
 
   customWrap.appendChild(dateInput);
   pop.appendChild(customWrap);
 
-  const hint = document.createElement("p");
-  hint.className = "date-popover__hint";
-  hint.textContent = "Press Enter to save";
-  customWrap.appendChild(hint);
-
-  // Recurrence section 
+  // Recurrence section
   const dRecur = document.createElement("div");
   dRecur.className = "date-popover__divider";
   pop.appendChild(dRecur);
@@ -1068,18 +1090,25 @@ function openDatePopover(anchorEl, taskId) {
   const recurRow = document.createElement("div");
   recurRow.className = "date-popover__recur";
 
+  const recurButtons = [];
+
   const mkRecurBtn = (value, label) => {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "date-popover__recur-btn";
-    if (task.recurrence === value) b.classList.add("is-active");
+    if (workingRecur === value) b.classList.add("is-active");
     b.textContent = label;
     b.addEventListener("click", (e) => {
       e.stopPropagation();
-      // Commits the recurrence and closes the popover.
-      setRecurrence(taskId, value === task.recurrence ? null : value);
-      closeDatePopover();
+      // Toggle behaviour: clicking the active one clears it.
+      workingRecur = workingRecur === value ? null : value;
+      // Update active states in place.
+      recurButtons.forEach((btn) =>
+        btn.classList.toggle("is-active", btn.dataset.value === workingRecur),
+      );
     });
+    b.dataset.value = value || "none";
+    recurButtons.push(b);
     return b;
   };
 
@@ -1089,14 +1118,46 @@ function openDatePopover(anchorEl, taskId) {
   recurRow.appendChild(mkRecurBtn(null, "None"));
   pop.appendChild(recurRow);
 
+  // Footer actions
+  const footer = document.createElement("div");
+  footer.className = "date-popover__footer";
+
   if (task.dueAt) {
-    const d2 = document.createElement("div");
-    d2.className = "date-popover__divider";
-    pop.appendChild(d2);
-    pop.appendChild(
-      mkBtn("fa-trash-can", "Clear date", () => commitAndClose(null), true),
-    );
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className =
+      "date-popover__footer-btn date-popover__footer-btn--danger";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      workingDate = "";
+      workingRecur = null;
+      commitAndClose();
+    });
+    footer.appendChild(clearBtn);
+  } else {
+    // Spacer so the Done button sits on the right.
+    const spacer = document.createElement("span");
+    footer.appendChild(spacer);
   }
+
+  const doneBtn = document.createElement("button");
+  doneBtn.type = "button";
+  doneBtn.className =
+    "date-popover__footer-btn date-popover__footer-btn--primary";
+  doneBtn.textContent = "Done";
+  doneBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    // If there's a date and a recurrence but no explicit date typed,
+    // default to today (a recurring task must have an anchor).
+    if (workingRecur && !workingDate) {
+      workingDate = todayISO();
+    }
+    commitAndClose();
+  });
+  footer.appendChild(doneBtn);
+
+  pop.appendChild(footer);
 
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };

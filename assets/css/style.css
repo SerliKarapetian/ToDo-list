@@ -973,6 +973,59 @@ a {
   box-shadow: 0 4px 10px -4px var(--magenta);
 }
 
+/* Date popover footer — Clear + Done */
+.date-popover__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.date-popover__footer-btn {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: var(--transition);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.date-popover__footer-btn--primary {
+  background: var(--magenta);
+  color: #fff;
+  box-shadow: 0 6px 14px -6px var(--magenta);
+}
+
+.date-popover__footer-btn--primary:hover {
+  background: #ec4b8e;
+  transform: translateY(-1px);
+}
+
+.date-popover__footer-btn--primary:active {
+  transform: translateY(0);
+}
+
+.date-popover__footer-btn--danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgba(239, 74, 107, 0.35);
+}
+
+.date-popover__footer-btn--danger:hover {
+  background: rgba(239, 74, 107, 0.12);
+  border-color: var(--danger);
+}
+
+.date-popover__footer-btn:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+}
+
 /* Inline edit */
 .task.is-editing {
   cursor: default;
