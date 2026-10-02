@@ -19,7 +19,7 @@ const searchBtn = document.getElementById("search-btn");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
-const LEAVE_DURATION = 550; // total ms for fade + slide + collapse
+const LEAVE_DURATION = 550;
 const MAX_LENGTH = 100;
 
 /* State */
@@ -30,6 +30,7 @@ let pendingDelete = null;
 let selectedId = null;
 let openPopover = null;
 let leavingIds = new Set();
+let sortableInstance = null;
 
 /* Date helpers */
 function todayISO() {
@@ -113,8 +114,9 @@ function load() {
   }
   const now = Date.now();
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
-  tasks.forEach((t) => {
+  tasks.forEach((t, i) => {
     if (!("dueAt" in t)) t.dueAt = null;
+    if (typeof t.order !== "number") t.order = i;
   });
 }
 
@@ -184,13 +186,21 @@ function visibleTasks() {
     list = [...list].sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   } else if (filter === "active") {
     list = list.filter((t) => !t.done);
+    list = [...list].sort((a, b) => a.order - b.order);
   } else if (filter === "completed") {
     list = list.filter((t) => t.done);
+    list = [...list].sort((a, b) => a.order - b.order);
+  } else {
+    list = [...list].sort((a, b) => a.order - b.order);
   }
 
   if (tokens.length) list = list.filter((t) => matchesQuery(t, tokens));
 
   return { list, tokens };
+}
+
+function canReorder() {
+  return filter === "all" && !query;
 }
 
 /* Row builder */
@@ -203,6 +213,17 @@ function buildTaskRow(task, tokens) {
   li.tabIndex = 0;
   li.setAttribute("role", "listitem");
   li.setAttribute("aria-checked", String(task.done));
+
+  // Grip — only rendered when reordering is allowed. Sortable uses
+  // it as the drag handle.
+  if (canReorder()) {
+    const grip = document.createElement("span");
+    grip.className = "task__grip";
+    grip.setAttribute("aria-hidden", "true");
+    grip.title = "Drag to reorder";
+    grip.innerHTML = '<i class="fas fa-grip-vertical"></i>';
+    li.appendChild(grip);
+  }
 
   const check = document.createElement("span");
   check.className = "task__check";
@@ -279,21 +300,16 @@ function buildTaskRow(task, tokens) {
 
 /* Update an existing row in place */
 function updateTaskRow(li, task, tokens) {
-  // checked state
   li.classList.toggle("checked", task.done);
   li.setAttribute("aria-checked", String(task.done));
-
-  // selected state
   li.classList.toggle("is-selected", task.id === selectedId);
 
-  // text
   const textEl = li.querySelector(".task__text");
   if (textEl) {
     textEl.innerHTML = "";
     textEl.appendChild(highlight(task.text, tokens));
   }
 
-  // due chip
   const slot = li.querySelector(".task__slot");
   if (slot) {
     const existingChip = slot.querySelector(".task__due");
@@ -324,7 +340,6 @@ function updateTaskRow(li, task, tokens) {
     }
   }
 
-  // update date button aria-label
   const dateBtn = li.querySelector('[data-action="date"]');
   if (dateBtn) {
     dateBtn.setAttribute(
@@ -338,41 +353,46 @@ function updateTaskRow(li, task, tokens) {
 function render() {
   const { list, tokens } = visibleTasks();
 
-  // Build a Set of desired ids for O(1) lookups
   const desiredIds = new Set(list.map((t) => t.id));
 
-  // 1. Remove rows whose tasks are no longer visible
   [...listEl.children].forEach((li) => {
-    if (!desiredIds.has(li.dataset.id)) {
-      li.remove();
-    }
+    if (!desiredIds.has(li.dataset.id)) li.remove();
   });
 
-  // 2. Walk the desired list in order. Reuse existing rows in place,
-  //    create only genuinely new ones (with entry animation).
   list.forEach((task, index) => {
     let li = listEl.querySelector(`.task[data-id="${task.id}"]`);
 
     if (li) {
-      updateTaskRow(li, task, tokens);
+      if (canReorder() && !li.querySelector(".task__grip")) {
+        const fresh = buildTaskRow(task, tokens);
+        li.replaceWith(fresh);
+        li = fresh;
+      } else {
+        updateTaskRow(li, task, tokens);
+      }
     } else {
       li = buildTaskRow(task, tokens);
       if (!leavingIds.has(task.id)) {
         li.classList.add("task--enter");
+        li.addEventListener(
+          "animationend",
+          () => li.classList.remove("task--enter"),
+          { once: true },
+        );
       }
     }
 
-    // Ensure the row is at the correct position
     const currentAtIndex = listEl.children[index];
-    if (currentAtIndex !== li) {
-      listEl.insertBefore(li, currentAtIndex || null);
-    }
+    if (currentAtIndex !== li) listEl.insertBefore(li, currentAtIndex || null);
   });
 
   updateProgress();
   updateEmptyState(list.length);
 
   if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
+
+  // Ensure Sortable is enabled / disabled to match the current state.
+  syncSortable();
 }
 
 function updateProgress() {
@@ -469,6 +489,60 @@ function leaveRow(li, onDone) {
   };
 }
 
+/* DRAG & DROP — Sortable.js */
+
+function syncSortable() {
+  const shouldBeActive = canReorder() && typeof Sortable !== "undefined";
+
+  if (shouldBeActive && !sortableInstance) {
+    sortableInstance = new Sortable(listEl, {
+      animation: 180,
+      handle: ".task__grip",
+      draggable: ".task",
+
+      ghostClass: "task--ghost",
+      dragClass: "task--dragging",
+
+      filter: ".task.is-editing, .task.is-leaving",
+      preventOnFilter: false,
+
+      forceAutoScrollFallback: true,
+      scroll: listEl,
+      scrollSensitivity: 60,
+      scrollSpeed: 14,
+      bubbleScroll: false,
+
+      onEnd: () => {
+        syncOrderFromDom();
+      },
+    });
+  } else if (!shouldBeActive && sortableInstance) {
+    sortableInstance.destroy();
+    sortableInstance = null;
+  }
+}
+
+function syncOrderFromDom() {
+  const domIds = [...listEl.querySelectorAll(".task")].map(
+    (li) => li.dataset.id,
+  );
+
+  domIds.forEach((id, i) => {
+    const t = tasks.find((x) => x.id === id);
+    if (t) t.order = i;
+  });
+
+  const visibleIds = new Set(domIds);
+  let tail = domIds.length;
+  tasks.forEach((t) => {
+    if (!visibleIds.has(t.id)) t.order = tail++;
+  });
+
+  save();
+
+  render();
+}
+
 /* Actions */
 function addTask() {
   const text = inputBox.value.trim();
@@ -477,12 +551,17 @@ function addTask() {
     inputBox.focus();
     return;
   }
+  const minOrder = tasks.reduce(
+    (min, t) => (t.order < min ? t.order : min),
+    tasks.length,
+  );
   tasks.unshift({
     id: uid(),
     text,
     done: false,
     completedAt: null,
     dueAt: null,
+    order: minOrder - 1,
   });
   inputBox.value = "";
   save();
@@ -506,28 +585,19 @@ function toggleTask(id) {
       render();
       return;
     }
-
-    // Update the row's visuals immediately so the tick lands before
-    // the row starts moving.
     li.classList.add("checked");
     li.setAttribute("aria-checked", "true");
     updateProgress();
-
     leavingIds.add(id);
-
     requestAnimationFrame(() => {
       leaveRow(li, () => {
         leavingIds.delete(id);
-        // Remove this row from the DOM directly instead of a full
-        // render — no flicker for the other rows.
         li.remove();
         updateProgress();
-        // Update empty state in case this was the last visible row
         updateEmptyState(listEl.children.length);
       });
     });
   } else {
-    // Update the single row in place — no list re-render needed
     const li = listEl.querySelector(`.task[data-id="${id}"]`);
     if (li) {
       li.classList.toggle("checked", task.done);
@@ -584,8 +654,6 @@ function startEdit(li) {
   textEl.replaceWith(input);
   if (slot) slot.hidden = true;
 
-  // Auto-grow: match the textarea height to its content height so
-  // long tasks are fully visible without scrollbars.
   function autoGrow() {
     input.style.height = "auto";
     input.style.height = input.scrollHeight + "px";
@@ -603,15 +671,9 @@ function startEdit(li) {
     if (finished) return;
     finished = true;
 
-    // 1. Blur first so focus does not fall back to the <li>, which
-    //    would trigger the list's focusin handler and re-select the
-    //    row we are about to deselect.
     input.blur();
-
-    // 2. Deselect the task.
     selectedId = null;
 
-    // 3. If saving, update the task text (only if it actually changed).
     if (shouldPersist) {
       const trimmed = input.value.trim();
       const t = tasks.find((x) => x.id === id);
@@ -622,8 +684,6 @@ function startEdit(li) {
       }
     }
 
-    // 4. Rebuild this row in place. This always removes the textarea
-    //    and restores read mode, whether or not the text changed.
     li.classList.remove("is-editing");
     const current = tasks.find((x) => x.id === id);
     if (current) {
@@ -632,8 +692,6 @@ function startEdit(li) {
     } else {
       render();
     }
-
-    // 5. Refresh the progress ring.
     updateProgress();
   }
 
@@ -984,6 +1042,8 @@ listEl.addEventListener("click", (e) => {
   if (li.classList.contains("is-editing")) return;
   if (li.classList.contains("is-leaving")) return;
   if (e.target.closest("[data-action]")) return;
+  // Ignore clicks on the drag handle — they don't toggle the task.
+  if (e.target.closest(".task__grip")) return;
 
   selectTask(li.dataset.id, { scroll: false });
   toggleTask(li.dataset.id);

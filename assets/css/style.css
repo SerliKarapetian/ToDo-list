@@ -601,9 +601,12 @@ a {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: var(--transition);
-  animation: taskIn 0.3s var(--ease) both;
   word-break: break-word;
   position: relative;
+}
+
+.task--enter {
+  animation: taskIn 0.3s var(--ease) both;
 }
 
 @keyframes taskIn {
@@ -721,6 +724,40 @@ a {
   border-radius: 3px;
   padding: 1px 3px;
   font-weight: 600;
+}
+
+/* Drag handle */
+.task__grip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 30px;
+  flex-shrink: 0;
+  margin-left: -4px;
+  margin-right: -4px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: grab;
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--ease),
+    color 0.2s var(--ease);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task:hover .task__grip,
+.task.is-selected .task__grip {
+  opacity: 1;
+}
+
+.task__grip:hover {
+  color: var(--magenta);
+}
+
+.task__grip:active {
+  cursor: grabbing;
 }
 
 /* Right slot — chip stays visible, actions
@@ -845,6 +882,21 @@ a {
   transform: rotate(8deg);
 }
 
+/* Drag state — Sortable.js */
+.task.task--ghost {
+  opacity: 0.5;
+  background: var(--magenta-soft);
+  border-style: dashed;
+  border-color: var(--magenta);
+  box-shadow: none;
+}
+
+.task.task--dragging {
+  opacity: 0;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
 /* Inline edit */
 .task.is-editing {
   cursor: default;
@@ -1366,6 +1418,11 @@ body,
   /* On mobile, always show the actions; chip sits to their left */
   .task__actions {
     max-width: 100px;
+    opacity: 1;
+  }
+
+  /* Grip always visible on touch */
+  .task__grip {
     opacity: 1;
   }
 
