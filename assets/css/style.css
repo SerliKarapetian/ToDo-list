@@ -575,7 +575,6 @@ a {
   margin-right: -4px;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
-  isolation: isolate;
 }
 
 .tasks::-webkit-scrollbar {
@@ -883,57 +882,21 @@ a {
   transform: rotate(8deg);
 }
 
-/* Drag state */
-body.is-dragging {
-  cursor: grabbing;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-body.is-dragging * {
-  cursor: grabbing !important;
+/* Drag state — Sortable.js */
+.task.task--ghost {
+  opacity: 0.5;
+  background: var(--magenta-soft);
+  border-style: dashed;
+  border-color: var(--magenta);
+  box-shadow: none;
 }
 
 .task.task--dragging {
-  z-index: 10;
-  opacity: 0.5;
-  background: var(--magenta-soft);
-  border: 1px dashed var(--magenta);
-  box-shadow: 0 0 0 1px var(--magenta-soft);
-  transition:
-    background-color 0s,
-    border-color 0s,
-    color 0s;
+  opacity: 0;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
-
-.task.task--shifting {
-  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-
-/* Ghost — the elevated clone that floats above the pointer. */
-.task--ghost {
-  position: fixed;
-  left: 0;
-  top: 0;
-  z-index: 1300;
-  pointer-events: none;
-  box-shadow:
-    0 12px 32px -10px rgba(0, 0, 0, 0.5),
-    0 2px 6px -2px rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--magenta);
-  border-radius: var(--radius-md);
-  background: var(--surface-hover);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  opacity: 0.98;
-  will-change: transform;
-}
-
-.task--ghost .task__grip {
-  opacity: 1;
-  color: var(--magenta);
-}
-
 /* Inline edit */
 .task.is-editing {
   cursor: default;
@@ -1508,10 +1471,5 @@ body,
   /* Skip the leave delay animation, just remove instantly */
   .task.is-leaving {
     display: none;
-  }
-
-  /* Shifting disabled for users who don't want motion */
-  .task.task--shifting {
-    transition: none;
   }
 }

@@ -19,7 +19,7 @@ const searchBtn = document.getElementById("search-btn");
 const STORAGE_KEY = "todos";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const UNDO_WINDOW = 5000;
-const LEAVE_DURATION = 550; // total ms for fade + slide + collapse
+const LEAVE_DURATION = 550;
 const MAX_LENGTH = 100;
 
 /* State */
@@ -30,9 +30,7 @@ let pendingDelete = null;
 let selectedId = null;
 let openPopover = null;
 let leavingIds = new Set();
-
-/* Drag state */
-let dragging = null; // { id, li, startY, currentY, pointerId, ghost }
+let sortableInstance = null;
 
 /* Date helpers */
 function todayISO() {
@@ -116,7 +114,6 @@ function load() {
   }
   const now = Date.now();
   tasks = tasks.filter((t) => !t.completedAt || now - t.completedAt < WEEK);
-  // Migration: ensure each task has dueAt and order fields.
   tasks.forEach((t, i) => {
     if (!("dueAt" in t)) t.dueAt = null;
     if (typeof t.order !== "number") t.order = i;
@@ -194,7 +191,6 @@ function visibleTasks() {
     list = list.filter((t) => t.done);
     list = [...list].sort((a, b) => a.order - b.order);
   } else {
-    // "all" — preserve manual order
     list = [...list].sort((a, b) => a.order - b.order);
   }
 
@@ -203,7 +199,6 @@ function visibleTasks() {
   return { list, tokens };
 }
 
-/* Whether manual reordering is currently allowed */
 function canReorder() {
   return filter === "all" && !query;
 }
@@ -219,14 +214,14 @@ function buildTaskRow(task, tokens) {
   li.setAttribute("role", "listitem");
   li.setAttribute("aria-checked", String(task.done));
 
-  // Drag handle — only rendered when reordering is allowed
+  // Grip — only rendered when reordering is allowed. Sortable uses
+  // it as the drag handle.
   if (canReorder()) {
     const grip = document.createElement("span");
     grip.className = "task__grip";
     grip.setAttribute("aria-hidden", "true");
     grip.title = "Drag to reorder";
     grip.innerHTML = '<i class="fas fa-grip-vertical"></i>';
-    grip.addEventListener("pointerdown", (e) => startDrag(e, li, task.id));
     li.appendChild(grip);
   }
 
@@ -368,8 +363,6 @@ function render() {
     let li = listEl.querySelector(`.task[data-id="${task.id}"]`);
 
     if (li) {
-      // If reordering is enabled and this row doesn't have a grip yet,
-      // it means we switched into "all" from another filter — rebuild.
       if (canReorder() && !li.querySelector(".task__grip")) {
         const fresh = buildTaskRow(task, tokens);
         li.replaceWith(fresh);
@@ -397,6 +390,9 @@ function render() {
   updateEmptyState(list.length);
 
   if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
+
+  // Ensure Sortable is enabled / disabled to match the current state.
+  syncSortable();
 }
 
 function updateProgress() {
@@ -493,219 +489,60 @@ function leaveRow(li, onDone) {
   };
 }
 
-/* Drag & drop reordering */
-function startDrag(e, li, id) {
-  if (!canReorder()) return;
-  if (e.button !== undefined && e.button !== 0) return; // left-click only
+/* DRAG & DROP — Sortable.js */
 
-  e.preventDefault();
-  e.stopPropagation();
+function syncSortable() {
+  const shouldBeActive = canReorder() && typeof Sortable !== "undefined";
 
-  const rect = li.getBoundingClientRect();
-  const listRect = listEl.getBoundingClientRect();
+  if (shouldBeActive && !sortableInstance) {
+    sortableInstance = new Sortable(listEl, {
+  animation: 180,
+  handle: ".task__grip",
+  draggable: ".task",
 
-  // Ghost element — the elevated visual that follows the pointer.
-  const ghost = li.cloneNode(true);
-  ghost.classList.add("task--ghost");
-  ghost.style.width = rect.width + "px";
-  ghost.style.height = rect.height + "px";
-  ghost.style.left = rect.left + "px";
-  ghost.style.top = rect.top + "px";
-  document.body.appendChild(ghost);
+  // Placeholder left in the list at the source position.
+  ghostClass: "task--ghost",
+  // Element that follows the cursor.
+  dragClass: "task--dragging",
 
-  const indicator = null;
+  filter: ".task.is-editing, .task.is-leaving",
+  preventOnFilter: false,
 
+  // The critical fix for internal-container autoscroll.
+  forceAutoScrollFallback: true,
+  scroll: listEl,
+  scrollSensitivity: 60,
+  scrollSpeed: 14,
+  bubbleScroll: false,
 
-  li.classList.add("task--dragging");
-
-  // Snapshot the rows BEFORE we add any transforms.
-  const rowEls = [...listEl.querySelectorAll(".task")];
-  const rows = rowEls.map((el) => {
-    const r = el.getBoundingClientRect();
-    return {
-      el,
-      id: el.dataset.id,
-      originalTop: r.top,
-      height: r.height,
-    };
-  });
-
-  const gap =
-    rows.length > 1
-      ? Math.max(
-          0,
-          rows[1].originalTop - (rows[0].originalTop + rows[0].height),
-        )
-      : 8;
-
-  const fromIndex = rows.findIndex((r) => r.id === id);
-
-  dragging = {
-    id,
-    li,
-    ghost,
-    indicator,
-    rows,
-    gap,
-    fromIndex,
-    targetIndex: fromIndex,
-    listTop: listRect.top,
-    listBottom: listRect.bottom,
-    startY: e.clientY,
-    offsetY: e.clientY - rect.top,
-    pointerId: e.pointerId,
-    draggedHeight: rect.height,
-    autoScroll: 0,
-  };
-
-  document.body.classList.add("is-dragging");
-
-  document.addEventListener("pointermove", onDragMove);
-  document.addEventListener("pointerup", onDragEnd);
-  document.addEventListener("pointercancel", onDragEnd);
-}
-
-function onDragMove(e) {
-  if (!dragging) return;
-  const { ghost, indicator, offsetY, rows, gap, fromIndex, draggedHeight, li } =
-    dragging;
-
-  const y = e.clientY;
-
-  // Autoscroll: nudge the list if the pointer is near an edge
-  const listRect = listEl.getBoundingClientRect();
-  let scrollDelta = 0;
-  const EDGE = 48;
-  const MAX = 14;
-  if (y < listRect.top + EDGE) {
-    const t = 1 - (y - listRect.top) / EDGE;
-    scrollDelta = -Math.round(MAX * Math.min(1, Math.max(0, t)));
-  } else if (y > listRect.bottom - EDGE) {
-    const t = 1 - (listRect.bottom - y) / EDGE;
-    scrollDelta = Math.round(MAX * Math.min(1, Math.max(0, t)));
-  }
-  if (scrollDelta !== 0) {
-    const before = listEl.scrollTop;
-    listEl.scrollTop += scrollDelta;
-    const applied = listEl.scrollTop - before;
-    if (applied !== 0) {
-      for (const r of rows) r.originalTop -= applied;
-      dragging.listTop -= applied;
-      dragging.listBottom -= applied;
-    }
-  }
-
-  // Ghost follows the pointer
-  ghost.style.top = y - offsetY + "px";
-
-  // Move the dragged <li> vertically with the pointer
-  const draggedRow = rows[fromIndex];
-  const draggedCurrentTop = y - offsetY;
-  const draggedDelta = draggedCurrentTop - draggedRow.originalTop;
-  li.style.transform = `translate3d(0, ${draggedDelta}px, 0)`;
-
-  // Compute target slot based on pointer position
-  const draggedCenter = y - offsetY + draggedHeight / 2;
-
-  let target = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (i === fromIndex) continue;
-    const mid = r.originalTop + r.height / 2;
-    if (draggedCenter < mid) {
-      target = i;
-      break;
-    }
-    target = i;
-  }
-  if (
-    draggedCenter >=
-    rows[rows.length - 1].originalTop + rows[rows.length - 1].height / 2
-  ) {
-    target = rows.length - 1;
-  }
-
-  dragging.targetIndex = target;
-
-  // Translate siblings to open a slot
-  rows.forEach((r, i) => {
-    if (i === fromIndex) return;
-    let shift = 0;
-    if (target > fromIndex) {
-      if (i > fromIndex && i <= target) shift = -(draggedHeight + gap);
-    } else if (target < fromIndex) {
-      if (i >= target && i < fromIndex) shift = draggedHeight + gap;
-    }
-    r.el.style.transform = shift ? `translate3d(0, ${shift}px, 0)` : "";
-    r.el.classList.toggle("task--shifting", shift !== 0);
-  });
-
-  if (indicator) {
-    // no-op — kept for forward compatibility
+  onEnd: () => {
+    syncOrderFromDom();
+  },
+});
+  } else if (!shouldBeActive && sortableInstance) {
+    sortableInstance.destroy();
+    sortableInstance = null;
   }
 }
 
-function onDragEnd() {
-  if (!dragging) return;
+function syncOrderFromDom() {
+  const domIds = [...listEl.querySelectorAll(".task")].map(
+    (li) => li.dataset.id,
+  );
 
-  document.removeEventListener("pointermove", onDragMove);
-  document.removeEventListener("pointerup", onDragEnd);
-  document.removeEventListener("pointercancel", onDragEnd);
-
-  const { id, ghost, indicator, targetIndex, li, rows, fromIndex } = dragging;
-
-  // Clear all shifts and the dragged row's transform.
-  rows.forEach((r) => {
-    r.el.style.transform = "";
-    r.el.classList.remove("task--shifting");
-  });
-  li.style.transform = "";
-
-  ghost.remove();
-  if (indicator) indicator.remove();
-  document.body.classList.remove("is-dragging");
-  li.classList.remove("task--dragging");
-
-  if (typeof targetIndex === "number" && targetIndex !== fromIndex) {
-    reorderTask(id, targetIndex);
-  } else {
-    render();
-  }
-
-  dragging = null;
-}
-
-function reorderTask(id, targetIndex) {
-  // Work on the currently visible list (which is what the user sees).
-  const { list } = visibleTasks();
-  const fromIndex = list.findIndex((t) => t.id === id);
-  if (fromIndex === -1) return;
-
-  // If we're moving down, adjust for the removal of the dragged row.
-  let to = targetIndex;
-  if (to > fromIndex) to -= 1;
-  if (to === fromIndex) return;
-
-  // Reorder within the visible list, then write back order values to
-  // the master array.
-  const reordered = [...list];
-  const [moved] = reordered.splice(fromIndex, 1);
-  reordered.splice(to, 0, moved);
-
-  reordered.forEach((t, i) => {
-    const task = tasks.find((x) => x.id === t.id);
-    if (task) task.order = i;
+  domIds.forEach((id, i) => {
+    const t = tasks.find((x) => x.id === id);
+    if (t) t.order = i;
   });
 
-  // For any tasks not visible in this filter, push their order after
-  // the visible ones so nothing collides.
-  const visibleIds = new Set(reordered.map((t) => t.id));
-  let tail = reordered.length;
+  const visibleIds = new Set(domIds);
+  let tail = domIds.length;
   tasks.forEach((t) => {
     if (!visibleIds.has(t.id)) t.order = tail++;
   });
 
   save();
+
   render();
 }
 
@@ -751,13 +588,10 @@ function toggleTask(id) {
       render();
       return;
     }
-
     li.classList.add("checked");
     li.setAttribute("aria-checked", "true");
     updateProgress();
-
     leavingIds.add(id);
-
     requestAnimationFrame(() => {
       leaveRow(li, () => {
         leavingIds.delete(id);
@@ -823,8 +657,6 @@ function startEdit(li) {
   textEl.replaceWith(input);
   if (slot) slot.hidden = true;
 
-  // Auto-grow: match the textarea height to its content height so
-  // long tasks are fully visible without scrollbars.
   function autoGrow() {
     input.style.height = "auto";
     input.style.height = input.scrollHeight + "px";
@@ -842,7 +674,6 @@ function startEdit(li) {
     if (finished) return;
     finished = true;
 
-    // Blur first so focus does not fall back to the <li>
     input.blur();
     selectedId = null;
 
