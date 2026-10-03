@@ -15,7 +15,9 @@ const searchBar = document.getElementById("search-bar");
 const searchInput = document.getElementById("search-input");
 const searchClear = document.getElementById("search-clear");
 const searchBtn = document.getElementById("search-btn");
-const tagsBar = document.getElementById("tags-bar");
+const searchTagBtn = document.getElementById("search-tag-btn");
+const searchTagPill = document.getElementById("search-tag-pill");
+const searchTagPillLabel = document.getElementById("search-tag-pill-label");
 
 const STORAGE_KEY = "todos";
 const TAGS_KEY = "tags";
@@ -26,7 +28,6 @@ const MAX_LENGTH = 100;
 const MAX_TAG_LENGTH = 20;
 const RECUR_FLASH = 700;
 
-/* Starter tags */
 const STARTER_TAGS = [
   { id: "work", label: "Work", color: "magenta" },
   { id: "personal", label: "Personal", color: "sage" },
@@ -451,7 +452,6 @@ function updateTaskRow(li, task, tokens) {
     textEl.appendChild(highlight(task.text, tokens));
   }
 
-  // Tag chip
   const existingTag = li.querySelector(".task__tag");
   const tag = getTag(task.tag);
   if (tag) {
@@ -474,7 +474,6 @@ function updateTaskRow(li, task, tokens) {
     existingTag.remove();
   }
 
-  // Recurrence chip
   const existingRecur = li.querySelector(".task__recur");
   if (task.recurrence) {
     if (existingRecur) {
@@ -498,7 +497,6 @@ function updateTaskRow(li, task, tokens) {
     existingRecur.remove();
   }
 
-  // Due chip
   const slot = li.querySelector(".task__slot");
   if (slot) {
     const existingChip = slot.querySelector(".task__due");
@@ -543,7 +541,7 @@ function updateTaskRow(li, task, tokens) {
   }
 }
 
-/* Rendering (keyed reconciliation) */
+/* Rendering */
 function render() {
   const { list, tokens } = visibleTasks();
 
@@ -582,54 +580,27 @@ function render() {
 
   updateProgress();
   updateEmptyState(list.length);
-  renderTagsBar();
+  renderSearchTagPill();
 
-  if (searchBar) searchBar.classList.toggle("has-query", query.length > 0);
+  if (searchBar) {
+    searchBar.classList.toggle("has-query", query.length > 0);
+    if (activeTag) searchBar.hidden = false;
+  }
 
   syncSortable();
 }
 
-function renderTagsBar() {
-  if (!tagsBar) return;
-
-  const usedTagIds = new Set(tasks.map((t) => t.tag).filter(Boolean));
-  const visibleTags = allTags().filter((t) => usedTagIds.has(t.id));
-
-  if (visibleTags.length === 0) {
-    tagsBar.hidden = true;
-    tagsBar.innerHTML = "";
-    return;
-  }
-
-  tagsBar.hidden = false;
-  tagsBar.innerHTML = "";
-
-  visibleTags.forEach((tag) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tag-filter";
-    btn.dataset.color = tag.color;
-    if (activeTag === tag.id) btn.classList.add("is-active");
-    btn.textContent = tag.label;
-    btn.addEventListener("click", () => {
-      activeTag = activeTag === tag.id ? null : tag.id;
-      selectedId = null;
-      render();
-    });
-    tagsBar.appendChild(btn);
-  });
-
-  if (activeTag) {
-    const clear = document.createElement("button");
-    clear.type = "button";
-    clear.className = "tag-filter tag-filter--clear";
-    clear.innerHTML =
-      '<i class="fas fa-times" aria-hidden="true"></i><span>Clear</span>';
-    clear.addEventListener("click", () => {
-      activeTag = null;
-      render();
-    });
-    tagsBar.appendChild(clear);
+function renderSearchTagPill() {
+  if (!searchTagPill) return;
+  const tag = getTag(activeTag);
+  if (tag) {
+    searchTagPill.hidden = false;
+    searchTagPill.dataset.color = tag.color;
+    searchTagPillLabel.textContent = tag.label;
+  } else {
+    searchTagPill.hidden = true;
+    searchTagPill.removeAttribute("data-color");
+    searchTagPillLabel.textContent = "";
   }
 }
 
@@ -731,7 +702,7 @@ function leaveRow(li, onDone) {
   };
 }
 
-/* DRAG & DROP — Sortable.js */
+/* DRAG & DROP */
 function syncSortable() {
   const shouldBeActive = canReorder() && typeof Sortable !== "undefined";
 
@@ -886,9 +857,7 @@ function setDueDate(id, iso) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
   task.dueAt = iso || null;
-  if (!iso && task.recurrence) {
-    task.recurrence = null;
-  }
+  if (!iso && task.recurrence) task.recurrence = null;
   save();
   selectedId = null;
   render();
@@ -898,9 +867,7 @@ function setDueDate(id, iso) {
 function setRecurrence(id, recurrence) {
   const task = tasks.find((t) => t.id === id);
   if (!task) return;
-  if (recurrence && !task.dueAt) {
-    task.dueAt = todayISO();
-  }
+  if (recurrence && !task.dueAt) task.dueAt = todayISO();
   task.recurrence = recurrence || null;
   save();
   render();
@@ -1117,7 +1084,26 @@ function closePopover() {
   openPopover = null;
 }
 
-/* ---------- Date popover (dates + recurrence) ---------- */
+/* Shared positioning helper */
+function positionPopover(pop, anchorEl) {
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let top = rect.bottom + 6;
+
+  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
+  if (left < 12) left = 12;
+  if (top + popRect.height > vh - 12) top = rect.top - popRect.height - 6;
+  if (top < 12) top = 12;
+
+  pop.style.left = left + "px";
+  pop.style.top = top + "px";
+}
+
+/* ---------- Date popover ---------- */
 function openDatePopover(anchorEl, taskId) {
   closePopover();
   const task = tasks.find((t) => t.id === taskId);
@@ -1229,15 +1215,12 @@ function openDatePopover(anchorEl, taskId) {
   dateInput.addEventListener("change", () => {
     if (typedSinceOpen) return;
     const v = dateInput.value;
-    if (v && isValidISODate(v)) {
-      workingDate = v;
-    }
+    if (v && isValidISODate(v)) workingDate = v;
   });
 
   customWrap.appendChild(dateInput);
   pop.appendChild(customWrap);
 
-  // Recurrence section
   const dRecur = document.createElement("div");
   dRecur.className = "date-popover__divider";
   pop.appendChild(dRecur);
@@ -1249,7 +1232,6 @@ function openDatePopover(anchorEl, taskId) {
 
   const recurRow = document.createElement("div");
   recurRow.className = "date-popover__recur";
-
   const recurButtons = [];
 
   const mkRecurBtn = (value, label) => {
@@ -1276,7 +1258,6 @@ function openDatePopover(anchorEl, taskId) {
   recurRow.appendChild(mkRecurBtn(null, "None"));
   pop.appendChild(recurRow);
 
-  // Footer
   const footer = document.createElement("div");
   footer.className = "date-popover__footer";
 
@@ -1294,8 +1275,7 @@ function openDatePopover(anchorEl, taskId) {
     });
     footer.appendChild(clearBtn);
   } else {
-    const spacer = document.createElement("span");
-    footer.appendChild(spacer);
+    footer.appendChild(document.createElement("span"));
   }
 
   const doneBtn = document.createElement("button");
@@ -1305,9 +1285,7 @@ function openDatePopover(anchorEl, taskId) {
   doneBtn.textContent = "Done";
   doneBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (workingRecur && !workingDate) {
-      workingDate = todayISO();
-    }
+    if (workingRecur && !workingDate) workingDate = todayISO();
     commitAndClose();
   });
   footer.appendChild(doneBtn);
@@ -1321,7 +1299,7 @@ function openDatePopover(anchorEl, taskId) {
   requestAnimationFrame(() => dateInput.focus());
 }
 
-/* Tag popover */
+/* ---------- Tag popover (assign a tag to a task) ---------- */
 function openTagPopover(anchorEl, taskId) {
   closePopover();
   const task = tasks.find((t) => t.id === taskId);
@@ -1332,12 +1310,10 @@ function openTagPopover(anchorEl, taskId) {
   pop.setAttribute("role", "menu");
   pop.setAttribute("aria-label", "Tag this task");
 
-  // The scrollable list.
   const list = document.createElement("div");
   list.className = "tag-popover__list";
   pop.appendChild(list);
 
-  // None option (top, separated)
   const noneRow = document.createElement("button");
   noneRow.type = "button";
   noneRow.className = "tag-popover__row tag-popover__row--none";
@@ -1361,13 +1337,8 @@ function openTagPopover(anchorEl, taskId) {
   divider.className = "tag-popover__divider";
   list.appendChild(divider);
 
-  // Tag rows
   const renderTagRows = () => {
-    // Remove any rows from a previous render (keep the none row +
-    // divider + any subsequent "new tag" section).
     list.querySelectorAll(".tag-popover__row--tag").forEach((n) => n.remove());
-
-    const reference = divider; // insert tags right after the divider
 
     allTags().forEach((t) => {
       const row = document.createElement("button");
@@ -1386,7 +1357,6 @@ function openTagPopover(anchorEl, taskId) {
         <span class="tag-popover__label">${t.label}</span>
       `;
 
-      // Custom tags get a small delete affordance on hover.
       if (t.id.startsWith("c_")) {
         const del = document.createElement("span");
         del.className = "tag-popover__delete";
@@ -1417,13 +1387,12 @@ function openTagPopover(anchorEl, taskId) {
         closePopover();
       });
 
-      list.insertBefore(row, reference.nextSibling);
+      list.insertBefore(row, divider.nextSibling);
     });
   };
 
   renderTagRows();
 
-  // New tag section
   const newSection = document.createElement("div");
   newSection.className = "tag-popover__new";
   pop.appendChild(newSection);
@@ -1569,36 +1538,96 @@ function openTagPopover(anchorEl, taskId) {
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };
 
-  // Position under the anchor.
+  positionPopover(pop, anchorEl);
+}
+
+/* ---------- Tag filter popover (filter the list) ---------- */
+function openTagFilterPopover(anchorEl) {
+  closePopover();
+
+  const pop = document.createElement("div");
+  pop.className = "tag-popover";
+  pop.setAttribute("role", "menu");
+  pop.setAttribute("aria-label", "Filter by tag");
+
+  const list = document.createElement("div");
+  list.className = "tag-popover__list";
+  pop.appendChild(list);
+
+  const allRow = document.createElement("button");
+  allRow.type = "button";
+  allRow.className = "tag-popover__row tag-popover__row--none";
+  if (!activeTag) allRow.classList.add("is-active");
+  allRow.setAttribute("role", "menuitemradio");
+  allRow.setAttribute("aria-checked", String(!activeTag));
+  allRow.innerHTML = `
+    <span class="tag-popover__check" aria-hidden="true">
+      <i class="fas fa-check"></i>
+    </span>
+    <span class="tag-popover__label">All tags</span>
+  `;
+  allRow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    activeTag = null;
+    selectedId = null;
+    render();
+    closePopover();
+  });
+  list.appendChild(allRow);
+
+  const divider = document.createElement("div");
+  divider.className = "tag-popover__divider";
+  list.appendChild(divider);
+
+  const usedTagIds = new Set(tasks.map((t) => t.tag).filter(Boolean));
+  const visibleTags = allTags().filter((t) => usedTagIds.has(t.id));
+
+  if (visibleTags.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "tag-popover__empty";
+    empty.textContent = "No tags yet";
+    list.appendChild(empty);
+  } else {
+    visibleTags.forEach((t) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "tag-popover__row tag-popover__row--tag";
+      if (activeTag === t.id) row.classList.add("is-active");
+      row.setAttribute("role", "menuitemradio");
+      row.setAttribute("aria-checked", String(activeTag === t.id));
+      row.dataset.color = t.color;
+      row.innerHTML = `
+        <span class="tag-popover__check" aria-hidden="true">
+          <i class="fas fa-check"></i>
+        </span>
+        <span class="tag-popover__dot" aria-hidden="true"></span>
+        <span class="tag-popover__label">${t.label}</span>
+      `;
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        activeTag = activeTag === t.id ? null : t.id;
+        selectedId = null;
+        render();
+        closePopover();
+      });
+      list.appendChild(row);
+    });
+  }
+
+  document.body.appendChild(pop);
+  openPopover = { el: pop };
+
   const rect = anchorEl.getBoundingClientRect();
   const popRect = pop.getBoundingClientRect();
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let left = rect.right - popRect.width;
   let top = rect.bottom + 8;
 
-  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
   if (left < 12) left = 12;
+  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
   if (top + popRect.height > vh - 12) top = rect.top - popRect.height - 8;
-  if (top < 12) top = 12;
-
-  pop.style.left = left + "px";
-  pop.style.top = top + "px";
-}
-/* Shared positioning helper for both popovers */
-function positionPopover(pop, anchorEl) {
-  const rect = anchorEl.getBoundingClientRect();
-  const popRect = pop.getBoundingClientRect();
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  let left = rect.left + rect.width / 2 - popRect.width / 2;
-  let top = rect.bottom + 6;
-
-  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
-  if (left < 12) left = 12;
-  if (top + popRect.height > vh - 12) top = rect.top - popRect.height - 6;
   if (top < 12) top = 12;
 
   pop.style.left = left + "px";
@@ -1734,6 +1763,19 @@ searchClear?.addEventListener("click", (e) => {
   searchInput.focus();
 });
 
+/* Tag filter wiring */
+searchTagBtn?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  openTagFilterPopover(searchTagBtn);
+});
+
+searchTagPill?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  activeTag = null;
+  selectedId = null;
+  render();
+});
+
 /* Shortcuts overlay triggers */
 shortcutsBtn?.addEventListener("click", toggleShortcuts);
 shortcutsEl?.addEventListener("click", (e) => {
@@ -1742,7 +1784,7 @@ shortcutsEl?.addEventListener("click", (e) => {
 
 /* Click outside */
 document.addEventListener("click", (e) => {
-  if (openPopover && !e.target.closest(".date-popover")) {
+  if (openPopover && !e.target.closest(".tag-popover, .date-popover")) {
     closePopover();
   }
 
@@ -1751,7 +1793,7 @@ document.addEventListener("click", (e) => {
   const insideSearch = e.target.closest(".search");
   const onSearchBtn = e.target.closest("#search-btn");
   if (!insideSearch && !onSearchBtn) {
-    if (searchBar && !searchBar.hidden && !query) closeSearch();
+    if (searchBar && !searchBar.hidden && !query && !activeTag) closeSearch();
   }
 
   if (e.target.closest("#shortcuts")) return;
@@ -1913,7 +1955,7 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("beforeunload", () => {
   if (pendingDelete) {
-    clearTimeout(pendingDelete.timer);
+    clearTimeout(pendingDelete.timeoutId);
     pendingDelete = null;
     save();
   }

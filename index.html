@@ -117,9 +117,24 @@
         </button>
       </form>
 
-      <!-- Search bar (hidden by default; opened via the search button) -->
+      <!-- Search + tag filter (combined) -->
       <div class="search" id="search-bar" hidden>
         <i class="fas fa-magnifying-glass search__icon" aria-hidden="true"></i>
+
+        <!-- Selected tag filter pill (shown when a tag filter is active) -->
+        <button
+          type="button"
+          class="search__tag-pill"
+          id="search-tag-pill"
+          hidden
+          aria-label="Clear tag filter"
+          title="Clear tag filter"
+        >
+          <span class="search__tag-pill-dot" aria-hidden="true"></span>
+          <span class="search__tag-pill-label" id="search-tag-pill-label"></span>
+          <i class="fas fa-times search__tag-pill-x" aria-hidden="true"></i>
+        </button>
+
         <label for="search-input" class="sr-only">Search tasks</label>
         <input
           type="search"
@@ -129,6 +144,17 @@
           autocomplete="off"
           spellcheck="false"
         />
+
+        <button
+          type="button"
+          class="search__tag-btn"
+          id="search-tag-btn"
+          aria-label="Filter by tag"
+          title="Filter by tag"
+        >
+          <i class="fas fa-tag" aria-hidden="true"></i>
+        </button>
+
         <button
           type="button"
           class="search__clear"
@@ -139,8 +165,6 @@
           <i class="fas fa-times" aria-hidden="true"></i>
         </button>
       </div>
-      <!-- Tag filter strip (shown only when tags are in use) -->
-      <div class="tags-bar" id="tags-bar" hidden></div>
       <!-- filters -->
       <nav class="filters" aria-label="Filter tasks">
         <button class="filter is-active" data-filter="all" type="button">
