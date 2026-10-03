@@ -41,9 +41,17 @@
 
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --transition: all 0.25s var(--ease);
+
+  /* Tag color tokens */
+  --tag-magenta: #da367d;
+  --tag-sage: #65766d;
+  --tag-rose: #c28897;
+  --tag-violet: #8b7cc9;
+  --tag-amber: #d4a04c;
+  --tag-cyan: #5e9ab5;
+  --tag-neutral: #7a809a;
 }
 
-/* Tokens — Light */
 [data-theme="light"] {
   --navy: #f7f4ee;
   --navy-2: #ffffff;
@@ -75,6 +83,37 @@
 
   --glow-opacity: 0.1;
   --shadow-lg: 0 30px 70px -25px rgba(27, 33, 55, 0.22);
+
+  --tag-magenta: #c9266d;
+  --tag-sage: #5c7367;
+  --tag-rose: #b76c7f;
+  --tag-violet: #6f5fb5;
+  --tag-amber: #b7822a;
+  --tag-cyan: #3f7f9c;
+  --tag-neutral: #8a93a6;
+}
+
+/* Tag color helpers */
+[data-color="magenta"] {
+  --tag-current: var(--tag-magenta);
+}
+[data-color="sage"] {
+  --tag-current: var(--tag-sage);
+}
+[data-color="rose"] {
+  --tag-current: var(--tag-rose);
+}
+[data-color="violet"] {
+  --tag-current: var(--tag-violet);
+}
+[data-color="amber"] {
+  --tag-current: var(--tag-amber);
+}
+[data-color="cyan"] {
+  --tag-current: var(--tag-cyan);
+}
+[data-color="neutral"] {
+  --tag-current: var(--tag-neutral);
 }
 
 /* Reset & Base */
@@ -512,6 +551,77 @@ a {
   transform: rotate(90deg);
 }
 
+/* Tag filter strip */
+.tags-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px 8px;
+  margin-top: -2px;
+  flex-shrink: 0;
+  animation: taskIn 0.25s var(--ease) both;
+}
+
+.tag-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+  transition: var(--transition);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tag-filter::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tag-current, var(--text-dim));
+  flex-shrink: 0;
+  transition: box-shadow 0.2s var(--ease);
+}
+
+.tag-filter:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.tag-filter.is-active {
+  color: #fff;
+  background: var(--tag-current, var(--magenta));
+  border-color: var(--tag-current, var(--magenta));
+  box-shadow: 0 6px 14px -6px var(--tag-current, var(--magenta));
+}
+
+.tag-filter.is-active::before {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+}
+
+.tag-filter--clear {
+  color: var(--text-dim);
+  background: transparent;
+  border-style: dashed;
+}
+
+.tag-filter--clear::before {
+  display: none;
+}
+
+.tag-filter--clear:hover {
+  color: var(--danger);
+  border-color: rgba(239, 74, 107, 0.4);
+  background: rgba(239, 74, 107, 0.08);
+}
+
 /* Filters + hint */
 .filters {
   display: flex;
@@ -726,6 +836,76 @@ a {
   font-weight: 600;
 }
 
+/* Tag chip on a task row */
+.task__tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--tag-current, var(--text-muted));
+  background: color-mix(
+    in srgb,
+    var(--tag-current, var(--text-muted)) 15%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--tag-current, var(--text-muted)) 45%, transparent);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+.task.checked .task__tag {
+  opacity: 0.5;
+}
+
+@supports not (background: color-mix(in srgb, red 10%, transparent)) {
+  .task__tag {
+    background: var(--surface-soft);
+    border-color: var(--line);
+    color: var(--text-muted);
+  }
+}
+
+/* Recurrence chip */
+.task__recur {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s var(--ease),
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease);
+}
+
+.task__recur i {
+  font-size: 0.62rem;
+  opacity: 0.85;
+}
+
+.task.checked .task__recur {
+  opacity: 0.45;
+  color: var(--text-dim);
+  background: transparent;
+  border-color: var(--line);
+}
+
 /* Drag handle */
 .task__grip {
   display: grid;
@@ -822,8 +1002,7 @@ a {
   border-color: var(--line);
 }
 
-/* Task actions — collapsed to 0 width when idle,
-   expand on hover so the chip slides left */
+/* Task actions */
 .task__actions {
   display: flex;
   align-items: center;
@@ -840,7 +1019,7 @@ a {
 .task:hover .task__actions,
 .task:focus-within .task__actions,
 .task.is-selected .task__actions {
-  max-width: 100px;
+  max-width: 132px;
   opacity: 1;
 }
 
@@ -870,6 +1049,12 @@ a {
   transform: scale(1.08);
 }
 
+.task__tag-btn:hover {
+  background: var(--magenta-soft);
+  color: var(--magenta);
+  transform: translateY(-1px);
+}
+
 .task__edit-btn:hover {
   background: var(--magenta-soft);
   color: var(--magenta);
@@ -896,134 +1081,6 @@ a {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
-}
-
-/* Recurrence chip (on the task row) */
-.task__recur {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: var(--radius-pill);
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  color: var(--text-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition:
-    background-color 0.2s var(--ease),
-    border-color 0.2s var(--ease),
-    color 0.2s var(--ease);
-}
-
-.task__recur i {
-  font-size: 0.62rem;
-  opacity: 0.85;
-}
-
-.task.checked .task__recur {
-  opacity: 0.45;
-  color: var(--text-dim);
-  background: transparent;
-  border-color: var(--line);
-}
-
-/* Recurrence picker inside the date popover */
-.date-popover__label {
-  margin: 6px 10px 4px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-dim);
-}
-
-.date-popover__recur {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  padding: 0 10px 6px;
-}
-
-.date-popover__recur-btn {
-  padding: 7px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-  border: 1px solid var(--line);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  transition: var(--transition);
-  cursor: pointer;
-  text-align: center;
-}
-
-.date-popover__recur-btn:hover {
-  color: var(--text);
-  background: var(--surface-hover);
-}
-
-.date-popover__recur-btn.is-active {
-  background: var(--magenta);
-  border-color: var(--magenta);
-  color: #fff;
-  box-shadow: 0 4px 10px -4px var(--magenta);
-}
-
-/* Date popover footer — Clear + Done */
-.date-popover__footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px 4px;
-  margin-top: 4px;
-  border-top: 1px solid var(--line);
-}
-
-.date-popover__footer-btn {
-  padding: 7px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  transition: var(--transition);
-  cursor: pointer;
-  border: 1px solid transparent;
-}
-
-.date-popover__footer-btn--primary {
-  background: var(--magenta);
-  color: #fff;
-  box-shadow: 0 6px 14px -6px var(--magenta);
-}
-
-.date-popover__footer-btn--primary:hover {
-  background: #ec4b8e;
-  transform: translateY(-1px);
-}
-
-.date-popover__footer-btn--primary:active {
-  transform: translateY(0);
-}
-
-.date-popover__footer-btn--danger {
-  background: transparent;
-  color: var(--danger);
-  border-color: rgba(239, 74, 107, 0.35);
-}
-
-.date-popover__footer-btn--danger:hover {
-  background: rgba(239, 74, 107, 0.12);
-  border-color: var(--danger);
-}
-
-.date-popover__footer-btn:focus-visible {
-  outline: 2px solid var(--magenta);
-  outline-offset: 2px;
 }
 
 /* Inline edit */
@@ -1069,7 +1126,7 @@ a {
 .date-popover {
   position: fixed;
   z-index: 1050;
-  min-width: 220px;
+  min-width: 260px;
   background: var(--card-bg);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-md);
@@ -1079,6 +1136,11 @@ a {
   flex-direction: column;
   gap: 2px;
   animation: cardIn 0.2s var(--ease) both;
+}
+
+/* Tag popover — a narrower variant of the date popover */
+.tag-popover {
+  min-width: 240px;
 }
 
 .date-popover__btn {
@@ -1157,26 +1219,278 @@ a {
   text-align: right;
 }
 
-.date-popover__custom input[type="date"] {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1.5px solid var(--line-strong);
+/* Recurrence picker */
+.date-popover__label {
+  margin: 6px 10px 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.date-popover__recur {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 0 10px 6px;
+}
+
+.date-popover__recur-btn {
+  padding: 7px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: var(--transition);
+  cursor: pointer;
+  text-align: center;
+}
+
+.date-popover__recur-btn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.date-popover__recur-btn.is-active {
+  background: var(--magenta);
+  border-color: var(--magenta);
+  color: #fff;
+  box-shadow: 0 4px 10px -4px var(--magenta);
+}
+
+/* Tag picker (inside the tag popover) */
+.date-popover__tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 10px 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.date-popover__tags::-webkit-scrollbar {
+  width: 5px;
+}
+
+.date-popover__tags::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--radius-pill);
+}
+
+.date-popover__tag-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-popover__tag-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  color: var(--tag-current, var(--text-muted));
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+  transition: var(--transition);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-popover__tag-btn::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tag-current, var(--text-dim));
+  flex-shrink: 0;
+}
+
+.date-popover__tag-btn:hover {
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+.date-popover__tag-btn.is-active {
+  background: color-mix(
+    in srgb,
+    var(--tag-current, var(--magenta)) 18%,
+    transparent
+  );
+  border-color: var(--tag-current, var(--magenta));
+  color: var(--text);
+}
+
+.date-popover__tag-btn--none {
+  color: var(--text-muted);
+}
+
+.date-popover__tag-btn--none::before {
+  display: none;
+}
+
+.date-popover__tag-delete {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  transition: var(--transition);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.date-popover__tag-delete:hover {
+  color: var(--danger);
+  background: rgba(239, 74, 107, 0.14);
+}
+
+/* The "New tag…" button looks exactly like a tag button, but with a
+   dashed border and a plus glyph to hint that it's an action. */
+.date-popover__tag-btn--new {
+  color: var(--text-dim);
+  background: transparent;
+  border-style: dashed;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.date-popover__tag-btn--new::before {
+  /* Override the colored dot from the base tag button. */
+  display: none;
+}
+
+.date-popover__tag-btn--new::after {
+  content: "\f067"; /* fa-plus */
+  font-family: "Font Awesome 6 Free";
+  font-weight: 900;
+  font-size: 0.7rem;
+  margin-left: 6px;
+  opacity: 0.8;
+}
+
+.date-popover__tag-btn--new:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--line-strong);
+}
+
+/* When the button morphs into an input, the input keeps the same
+   footprint — same height, same radius, same padding — so the row
+   doesn't jump. */
+.date-popover__tag-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.date-popover__tag-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 0.5px solid var(--magenta);
   border-radius: var(--radius-sm);
   background: var(--surface-inset);
   color: var(--text);
   font: inherit;
-  font-size: 0.85rem;
-  color-scheme: dark;
-}
-
-[data-theme="light"] .date-popover__custom input[type="date"] {
-  color-scheme: light;
-}
-
-.date-popover__custom input[type="date"]:focus {
+  font-size: 0.8rem;
+  font-weight: 600;
   outline: none;
-  border-color: var(--magenta);
   box-shadow: 0 0 0 3px var(--magenta-soft);
+}
+
+.date-popover__tag-input::placeholder {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.date-popover__tag-confirm {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--magenta);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  transition: var(--transition);
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 4px 10px -4px var(--magenta);
+}
+
+.date-popover__tag-confirm:hover {
+  background: #ec4b8e;
+  transform: scale(1.05);
+}
+
+.date-popover__tag-confirm:active {
+  transform: scale(0.95);
+}
+
+/* Date popover footer */
+.date-popover__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.date-popover__footer-btn {
+  padding: 7px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: var(--transition);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.date-popover__footer-btn--primary {
+  background: var(--magenta);
+  color: #fff;
+  box-shadow: 0 6px 14px -6px var(--magenta);
+}
+
+.date-popover__footer-btn--primary:hover {
+  background: #ec4b8e;
+  transform: translateY(-1px);
+}
+
+.date-popover__footer-btn--primary:active {
+  transform: translateY(0);
+}
+
+.date-popover__footer-btn--danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: rgba(239, 74, 107, 0.35);
+}
+
+.date-popover__footer-btn--danger:hover {
+  background: rgba(239, 74, 107, 0.12);
+  border-color: var(--danger);
+}
+
+.date-popover__footer-btn:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
 }
 
 /* Empty state */
@@ -1491,7 +1805,10 @@ body,
 .task__check,
 .search,
 .icon-btn,
-.task__due {
+.task__due,
+.task__tag,
+.task__recur,
+.tag-filter {
   transition:
     background-color 0.35s var(--ease),
     border-color 0.35s var(--ease),
@@ -1546,7 +1863,7 @@ body,
 
   /* On mobile, always show the actions; chip sits to their left */
   .task__actions {
-    max-width: 100px;
+    max-width: 132px;
     opacity: 1;
   }
 
@@ -1558,6 +1875,17 @@ body,
   .task__due {
     font-size: 0.68rem;
     padding: 2px 7px;
+  }
+
+  .task__tag,
+  .task__recur {
+    font-size: 0.66rem;
+    padding: 2px 7px;
+  }
+
+  .tag-filter {
+    font-size: 0.7rem;
+    padding: 5px 10px;
   }
 
   .notification {
