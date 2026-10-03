@@ -1630,8 +1630,24 @@ a {
   border-color: var(--danger);
 }
 
-.tag-popover__editor.is-invalid .tag-popover__editor-hint {
-  opacity: 1;
+.tag-popover__counter {
+  display: block;
+  margin: 4px 2px 0;
+  text-align: right;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+  transition: color 0.15s var(--ease);
+  min-height: 1em;
+}
+
+.tag-popover__counter.is-near-limit {
+  color: var(--danger);
+}
+
+.tag-popover__counter.is-error {
+  color: var(--danger);
 }
 
 @keyframes tagShake {

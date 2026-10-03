@@ -1428,6 +1428,10 @@ function openTagPopover(anchorEl, taskId) {
     input.spellcheck = false;
     input.setAttribute("aria-label", "New tag name");
 
+    // Character counter — appears as the user approaches the limit.
+    const counter = document.createElement("span");
+    counter.className = "tag-popover__counter";
+
     const actions = document.createElement("div");
     actions.className = "tag-popover__editor-actions";
 
@@ -1448,11 +1452,9 @@ function openTagPopover(anchorEl, taskId) {
 
     actions.append(cancel, confirm);
 
-    const hint = document.createElement("div");
-    hint.className = "tag-popover__editor-hint";
-
-    editor.append(icon, input, actions, hint);
+    editor.append(icon, input, actions);
     newSection.appendChild(editor);
+    newSection.appendChild(counter);
 
     let finished = false;
 
@@ -1463,13 +1465,15 @@ function openTagPopover(anchorEl, taskId) {
     }
 
     function showHint(message) {
-      hint.textContent = message;
+      counter.textContent = message;
+      counter.classList.add("is-error");
       editor.classList.add("is-invalid");
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
       setTimeout(() => {
         editor.classList.remove("is-invalid");
-        hint.textContent = "";
+        counter.classList.remove("is-error");
+        updateCounter();
       }, 1600);
     }
 
@@ -1501,6 +1505,16 @@ function openTagPopover(anchorEl, taskId) {
       setTag(taskId, tag.id);
       closePopover();
     }
+
+    const updateCounter = () => {
+      counter.textContent = `${input.value.length}/${MAX_TAG_LENGTH}`;
+      counter.classList.toggle(
+        "is-near-limit",
+        input.value.length >= MAX_TAG_LENGTH - 3,
+      );
+    };
+    input.addEventListener("input", updateCounter);
+    updateCounter();
 
     input.addEventListener("keydown", (ev) => {
       if (ev.key === "Enter") {
