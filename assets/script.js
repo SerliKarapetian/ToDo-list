@@ -1321,183 +1321,271 @@ function openDatePopover(anchorEl, taskId) {
   requestAnimationFrame(() => dateInput.focus());
 }
 
-/* ---------- Tag popover ---------- */
+/* Tag popover */
 function openTagPopover(anchorEl, taskId) {
   closePopover();
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return;
 
   const pop = document.createElement("div");
-  pop.className = "date-popover tag-popover";
+  pop.className = "tag-popover";
   pop.setAttribute("role", "menu");
+  pop.setAttribute("aria-label", "Tag this task");
 
-  const header = document.createElement("p");
-  header.className = "date-popover__label";
-  header.textContent = "Tag this task";
-  pop.appendChild(header);
+  // The scrollable list.
+  const list = document.createElement("div");
+  list.className = "tag-popover__list";
+  pop.appendChild(list);
 
-  const tagGrid = document.createElement("div");
-  tagGrid.className = "date-popover__tags";
-  pop.appendChild(tagGrid);
+  // None option (top, separated)
+  const noneRow = document.createElement("button");
+  noneRow.type = "button";
+  noneRow.className = "tag-popover__row tag-popover__row--none";
+  if (!task.tag) noneRow.classList.add("is-active");
+  noneRow.setAttribute("role", "menuitemradio");
+  noneRow.setAttribute("aria-checked", String(!task.tag));
+  noneRow.innerHTML = `
+    <span class="tag-popover__check" aria-hidden="true">
+      <i class="fas fa-check"></i>
+    </span>
+    <span class="tag-popover__label">No tag</span>
+  `;
+  noneRow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setTag(taskId, null);
+    closePopover();
+  });
+  list.appendChild(noneRow);
 
-  const renderTagButtons = () => {
-    tagGrid.innerHTML = "";
+  const divider = document.createElement("div");
+  divider.className = "tag-popover__divider";
+  list.appendChild(divider);
+
+  // Tag rows
+  const renderTagRows = () => {
+    // Remove any rows from a previous render (keep the none row +
+    // divider + any subsequent "new tag" section).
+    list.querySelectorAll(".tag-popover__row--tag").forEach((n) => n.remove());
+
+    const reference = divider; // insert tags right after the divider
 
     allTags().forEach((t) => {
-      const row = document.createElement("div");
-      row.className = "date-popover__tag-row";
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "tag-popover__row tag-popover__row--tag";
+      if (task.tag === t.id) row.classList.add("is-active");
+      row.setAttribute("role", "menuitemradio");
+      row.setAttribute("aria-checked", String(task.tag === t.id));
+      row.dataset.color = t.color;
 
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "date-popover__tag-btn";
-      btn.dataset.color = t.color;
-      if (task.tag === t.id) btn.classList.add("is-active");
-      btn.textContent = t.label;
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        setTag(taskId, task.tag === t.id ? null : t.id);
-        closePopover();
-      });
-      row.appendChild(btn);
+      row.innerHTML = `
+        <span class="tag-popover__check" aria-hidden="true">
+          <i class="fas fa-check"></i>
+        </span>
+        <span class="tag-popover__dot" aria-hidden="true"></span>
+        <span class="tag-popover__label">${t.label}</span>
+      `;
 
+      // Custom tags get a small delete affordance on hover.
       if (t.id.startsWith("c_")) {
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "date-popover__tag-delete";
+        const del = document.createElement("span");
+        del.className = "tag-popover__delete";
+        del.setAttribute("role", "button");
+        del.setAttribute("tabindex", "0");
         del.setAttribute("aria-label", `Delete tag ${t.label}`);
         del.title = "Delete tag";
         del.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
         del.addEventListener("click", (e) => {
           e.stopPropagation();
           deleteCustomTag(t.id);
-          renderTagButtons();
+          renderTagRows();
+        });
+        del.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            deleteCustomTag(t.id);
+            renderTagRows();
+          }
         });
         row.appendChild(del);
       }
 
-      tagGrid.appendChild(row);
-    });
-
-    // "None" row
-    const noneRow = document.createElement("div");
-    noneRow.className = "date-popover__tag-row";
-    const noneBtn = document.createElement("button");
-    noneBtn.type = "button";
-    noneBtn.className = "date-popover__tag-btn date-popover__tag-btn--none";
-    if (!task.tag) noneBtn.classList.add("is-active");
-    noneBtn.textContent = "None";
-    noneBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      setTag(taskId, null);
-      closePopover();
-    });
-    noneRow.appendChild(noneBtn);
-    tagGrid.appendChild(noneRow);
-
-    // --- New tag: a button that morphs into an input on click ---
-    const newRow = document.createElement("div");
-    newRow.className = "date-popover__tag-row";
-    tagGrid.appendChild(newRow);
-
-    const newBtn = document.createElement("button");
-    newBtn.type = "button";
-    newBtn.className = "date-popover__tag-btn date-popover__tag-btn--new";
-    newBtn.textContent = "New tag…";
-    newRow.appendChild(newBtn);
-
-    newBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-
-      // Swap the button out for an input in the same slot.
-      newRow.innerHTML = "";
-
-      const inputWrap = document.createElement("div");
-      inputWrap.className = "date-popover__tag-input-wrap";
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "date-popover__tag-input";
-      input.placeholder = "New tag name…";
-      input.maxLength = MAX_TAG_LENGTH;
-      input.autocomplete = "off";
-      input.spellcheck = false;
-
-      const confirm = document.createElement("button");
-      confirm.type = "button";
-      confirm.className = "date-popover__tag-confirm";
-      confirm.setAttribute("aria-label", "Create tag");
-      confirm.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
-
-      let done = false;
-
-      function commit() {
-        if (done) return;
-        done = true;
-        const tag = createCustomTag(input.value);
-        if (!tag) {
-          // Restore the button if the input was empty.
-          done = false;
-          newRow.innerHTML = "";
-          newRow.appendChild(newBtn);
-          return;
-        }
-        input.value = "";
-        setTag(taskId, tag.id);
+      row.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setTag(taskId, task.tag === t.id ? null : t.id);
         closePopover();
-      }
-
-      function cancel() {
-        if (done) return;
-        done = true;
-        newRow.innerHTML = "";
-        newRow.appendChild(newBtn);
-      }
-
-      input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") {
-          ev.preventDefault();
-          ev.stopPropagation();
-          commit();
-        } else if (ev.key === "Escape") {
-          ev.preventDefault();
-          ev.stopPropagation();
-          cancel();
-        }
-      });
-      input.addEventListener("blur", () => {
-        // Give the confirm button a chance to receive the click first.
-        setTimeout(() => {
-          if (!done && !input.value.trim()) cancel();
-        }, 120);
-      });
-      input.addEventListener("click", (ev) => ev.stopPropagation());
-
-      confirm.addEventListener("mousedown", (ev) => {
-        // Prevent the input from losing focus before click fires.
-        ev.preventDefault();
-      });
-      confirm.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        commit();
       });
 
-      inputWrap.appendChild(input);
-      inputWrap.appendChild(confirm);
-      newRow.appendChild(inputWrap);
-
-      // Focus only after the swap, and only because the user clicked.
-      requestAnimationFrame(() => input.focus());
+      list.insertBefore(row, reference.nextSibling);
     });
   };
 
-  renderTagButtons();
+  renderTagRows();
+
+  // New tag section
+  const newSection = document.createElement("div");
+  newSection.className = "tag-popover__new";
+  pop.appendChild(newSection);
+
+  const newRow = document.createElement("button");
+  newRow.type = "button";
+  newRow.className = "tag-popover__row tag-popover__row--new";
+  newRow.innerHTML = `
+    <span class="tag-popover__plus" aria-hidden="true">
+      <i class="fas fa-plus"></i>
+    </span>
+    <span class="tag-popover__label">New tag</span>
+  `;
+  newSection.appendChild(newRow);
+
+  newRow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    newSection.innerHTML = "";
+
+    const editor = document.createElement("div");
+    editor.className = "tag-popover__editor";
+
+    const icon = document.createElement("i");
+    icon.className = "fas fa-tag tag-popover__editor-icon";
+    icon.setAttribute("aria-hidden", "true");
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "tag-popover__input";
+    input.placeholder = "Tag name…";
+    input.maxLength = MAX_TAG_LENGTH;
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.setAttribute("aria-label", "New tag name");
+
+    const actions = document.createElement("div");
+    actions.className = "tag-popover__editor-actions";
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "tag-popover__editor-btn";
+    cancel.setAttribute("aria-label", "Cancel");
+    cancel.title = "Cancel (Esc)";
+    cancel.innerHTML = '<i class="fas fa-times" aria-hidden="true"></i>';
+
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className =
+      "tag-popover__editor-btn tag-popover__editor-btn--primary";
+    confirm.setAttribute("aria-label", "Create tag");
+    confirm.title = "Create (Enter)";
+    confirm.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+
+    actions.append(cancel, confirm);
+
+    const hint = document.createElement("div");
+    hint.className = "tag-popover__editor-hint";
+
+    editor.append(icon, input, actions, hint);
+    newSection.appendChild(editor);
+
+    let finished = false;
+
+    function collapse() {
+      finished = true;
+      newSection.innerHTML = "";
+      newSection.appendChild(newRow);
+    }
+
+    function showHint(message) {
+      hint.textContent = message;
+      editor.classList.add("is-invalid");
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      setTimeout(() => {
+        editor.classList.remove("is-invalid");
+        hint.textContent = "";
+      }, 1600);
+    }
+
+    function commit() {
+      if (finished) return;
+      const value = input.value.trim();
+
+      if (!value) {
+        collapse();
+        return;
+      }
+
+      const dupe = allTags().some(
+        (t) => t.label.toLowerCase() === value.toLowerCase(),
+      );
+      if (dupe) {
+        showHint("Already exists");
+        return;
+      }
+
+      finished = true;
+      const tag = createCustomTag(value);
+      if (!tag) {
+        finished = false;
+        showHint("Couldn't create tag");
+        return;
+      }
+      input.value = "";
+      setTag(taskId, tag.id);
+      closePopover();
+    }
+
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        commit();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        collapse();
+      }
+    });
+    input.addEventListener("blur", () => {
+      setTimeout(() => {
+        if (!finished) commit();
+      }, 130);
+    });
+    input.addEventListener("click", (ev) => ev.stopPropagation());
+
+    cancel.addEventListener("mousedown", (ev) => ev.preventDefault());
+    cancel.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      collapse();
+    });
+
+    confirm.addEventListener("mousedown", (ev) => ev.preventDefault());
+    confirm.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      commit();
+    });
+
+    requestAnimationFrame(() => input.focus());
+  });
 
   document.body.appendChild(pop);
   openPopover = { el: pop, taskId };
 
-  positionPopover(pop, anchorEl);
-}
+  // Position under the anchor.
+  const rect = anchorEl.getBoundingClientRect();
+  const popRect = pop.getBoundingClientRect();
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
 
+  let left = rect.left + rect.width / 2 - popRect.width / 2;
+  let top = rect.bottom + 8;
+
+  if (left + popRect.width > vw - 12) left = vw - popRect.width - 12;
+  if (left < 12) left = 12;
+  if (top + popRect.height > vh - 12) top = rect.top - popRect.height - 8;
+  if (top < 12) top = 12;
+
+  pop.style.left = left + "px";
+  pop.style.top = top + "px";
+}
 /* Shared positioning helper for both popovers */
 function positionPopover(pop, anchorEl) {
   const rect = anchorEl.getBoundingClientRect();
