@@ -725,6 +725,7 @@ a {
   transition: var(--transition);
   word-break: break-word;
   position: relative;
+  min-width: 0;
 }
 
 .task--enter {
@@ -775,10 +776,6 @@ a {
   box-shadow: 0 0 0 1px var(--magenta-soft);
 }
 
-.task.is-selected .task__action {
-  opacity: 1;
-}
-
 .task.is-selected .task__text {
   color: var(--text);
 }
@@ -825,13 +822,17 @@ a {
   transform: rotate(-45deg) scale(1);
 }
 
+/* Text */
 .task__text {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.94rem;
   color: var(--text);
   line-height: 1.4;
-  min-width: 0;
   word-break: break-word;
+  transition:
+    opacity 0.28s var(--ease),
+    filter 0.28s var(--ease);
 }
 
 .task.checked .task__text {
@@ -848,7 +849,72 @@ a {
   font-weight: 600;
 }
 
-/* Tag chip on a task row */
+/* Overlay — meta + actions float over the text on hover */
+
+.task__overlay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  z-index: 2;
+  background: var(--surface-soft);
+  /* border: 1px solid var(--line); */
+  border-radius: var(--radius-pill);
+  padding: 4px 6px 4px 8px;
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transform: translateY(-50%) translateX(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s var(--ease),
+    transform 0.3s var(--ease);
+}
+
+.task:hover .task__overlay,
+.task:focus-within .task__overlay,
+.task.is-selected .task__overlay,
+.task.is-editing .task__overlay {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Text dims + blurs behind the overlay */
+.task:hover .task__text,
+.task:focus-within .task__text,
+.task.is-selected .task__text {
+  opacity: 0.3;
+  filter: blur(1.5px);
+}
+
+.task.is-editing .task__text {
+  opacity: 1;
+  filter: none;
+}
+
+.task.checked .task__text {
+  opacity: 0.35;
+}
+.task.checked:hover .task__text,
+.task.checked:focus-within .task__text,
+.task.checked.is-selected .task__text {
+  opacity: 0.2;
+}
+
+/* Meta cluster inside overlay */
+.task__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Tag chip */
 .task__tag {
   display: inline-flex;
   align-items: center;
@@ -952,8 +1018,7 @@ a {
   cursor: grabbing;
 }
 
-/* Right slot — chip stays visible, actions
-   expand beside it on hover */
+/* Action slot */
 .task__slot {
   display: flex;
   align-items: center;
@@ -963,7 +1028,7 @@ a {
   height: 30px;
 }
 
-/* Due chip — always visible at the end of the row */
+/* Due chip */
 .task__due {
   display: inline-flex;
   align-items: center;
@@ -1020,19 +1085,6 @@ a {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
-  overflow: hidden;
-  max-width: 0;
-  opacity: 0;
-  transition:
-    max-width 0.32s var(--ease),
-    opacity 0.22s var(--ease);
-}
-
-.task:hover .task__actions,
-.task:focus-within .task__actions,
-.task.is-selected .task__actions {
-  max-width: 132px;
-  opacity: 1;
 }
 
 .task__action {
@@ -1099,12 +1151,6 @@ a {
 .task.is-editing {
   cursor: default;
   align-items: flex-start;
-}
-
-/* Hide tag & recurrence pills while editing */
-.task.is-editing .task__tag,
-.task.is-editing .task__recur {
-  display: none;
 }
 
 .task__edit {
@@ -1225,14 +1271,6 @@ a {
   box-shadow: 0 0 0 3px var(--magenta-soft);
 }
 
-.date-popover__hint {
-  margin-top: 6px;
-  font-size: 0.68rem;
-  color: var(--text-dim);
-  text-align: right;
-}
-
-/* Recurrence picker */
 .date-popover__label {
   margin: 6px 10px 4px;
   font-size: 0.68rem;
@@ -1615,20 +1653,6 @@ a {
 
 .tag-popover__editor-btn:active {
   transform: scale(0.94);
-}
-
-/* Validation hint below the editor */
-.tag-popover__editor-hint {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 4px);
-  font-size: 0.66rem;
-  font-weight: 600;
-  color: var(--danger);
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.15s var(--ease);
 }
 
 .tag-popover__editor.is-invalid {
@@ -2042,17 +2066,6 @@ body,
     padding: 8px 4px;
   }
 
-  /* On mobile, always show the actions; chip sits to their left */
-  .task__actions {
-    max-width: 132px;
-    opacity: 1;
-  }
-
-  /* Grip always visible on touch */
-  .task__grip {
-    opacity: 1;
-  }
-
   .task__due {
     font-size: 0.68rem;
     padding: 2px 7px;
@@ -2062,11 +2075,6 @@ body,
   .task__recur {
     font-size: 0.66rem;
     padding: 2px 7px;
-  }
-
-  .tag-filter {
-    font-size: 0.7rem;
-    padding: 5px 10px;
   }
 
   .notification {

@@ -339,29 +339,34 @@ function buildTaskRow(task, tokens) {
   text.className = "task__text";
   text.appendChild(highlight(task.text, tokens));
 
-  const tag = getTag(task.tag);
+  // Overlay wrapper (meta + actions)
+  const overlay = document.createElement("div");
+  overlay.className = "task__overlay";
 
-  let tagEl = null;
+  // Meta cluster: tag + recurrence + due
+  const meta = document.createElement("div");
+  meta.className = "task__meta";
+
+  const tag = getTag(task.tag);
   if (tag) {
-    tagEl = document.createElement("span");
+    const tagEl = document.createElement("span");
     tagEl.className = "task__tag";
     tagEl.dataset.color = tag.color;
     tagEl.textContent = tag.label;
+    tagEl.title = tag.label;
+    meta.appendChild(tagEl);
   }
 
-  let recurEl = null;
   if (task.recurrence) {
-    recurEl = document.createElement("span");
+    const recurEl = document.createElement("span");
     recurEl.className = "task__recur";
     recurEl.title = `Repeats ${task.recurrence}`;
     recurEl.innerHTML = `<i class="fas fa-arrows-rotate" aria-hidden="true"></i>`;
     recurEl.appendChild(
       document.createTextNode(" " + recurLabel(task.recurrence)),
     );
+    meta.appendChild(recurEl);
   }
-
-  const slot = document.createElement("div");
-  slot.className = "task__slot";
 
   if (task.dueAt) {
     const due = document.createElement("span");
@@ -370,8 +375,14 @@ function buildTaskRow(task, tokens) {
       diffDays(task.dueAt) < 0 ? "fa-triangle-exclamation" : "fa-calendar-day";
     due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
     due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
-    slot.appendChild(due);
+    meta.appendChild(due);
   }
+
+  if (meta.children.length) overlay.appendChild(meta);
+
+  // Action slot
+  const slot = document.createElement("div");
+  slot.className = "task__slot";
 
   const actions = document.createElement("div");
   actions.className = "task__actions";
@@ -433,11 +444,10 @@ function buildTaskRow(task, tokens) {
 
   actions.append(dateBtn, tagBtn, edit, del);
   slot.appendChild(actions);
+  overlay.appendChild(slot);
 
   li.append(check, text);
-  if (tagEl) li.appendChild(tagEl);
-  if (recurEl) li.appendChild(recurEl);
-  li.appendChild(slot);
+  li.appendChild(overlay);
   return li;
 }
 
@@ -446,35 +456,52 @@ function updateTaskRow(li, task, tokens) {
   li.setAttribute("aria-checked", String(task.done));
   li.classList.toggle("is-selected", task.id === selectedId);
 
+  // Text
   const textEl = li.querySelector(".task__text");
   if (textEl) {
     textEl.innerHTML = "";
     textEl.appendChild(highlight(task.text, tokens));
   }
 
-  const existingTag = li.querySelector(".task__tag");
+  // Overlay wrapper
+  let overlay = li.querySelector(".task__overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.className = "task__overlay";
+    li.appendChild(overlay);
+  }
+
+  // Meta cluster inside overlay
+  let meta = overlay.querySelector(".task__meta");
+  if (!meta) {
+    meta = document.createElement("div");
+    meta.className = "task__meta";
+    const slotRef = overlay.querySelector(".task__slot");
+    overlay.insertBefore(meta, slotRef);
+  }
+
+  // Tag
+  const existingTag = meta.querySelector(".task__tag");
   const tag = getTag(task.tag);
   if (tag) {
     if (existingTag) {
       existingTag.dataset.color = tag.color;
       existingTag.textContent = tag.label;
+      existingTag.title = tag.label;
     } else {
       const el = document.createElement("span");
       el.className = "task__tag";
       el.dataset.color = tag.color;
       el.textContent = tag.label;
-      const textRef = li.querySelector(".task__text");
-      if (textRef && textRef.nextSibling) {
-        li.insertBefore(el, textRef.nextSibling);
-      } else {
-        li.appendChild(el);
-      }
+      el.title = tag.label;
+      meta.insertBefore(el, meta.firstChild);
     }
   } else if (existingTag) {
     existingTag.remove();
   }
 
-  const existingRecur = li.querySelector(".task__recur");
+  // Recurrence
+  const existingRecur = meta.querySelector(".task__recur");
   if (task.recurrence) {
     if (existingRecur) {
       existingRecur.title = `Repeats ${task.recurrence}`;
@@ -490,43 +517,49 @@ function updateTaskRow(li, task, tokens) {
       recur.appendChild(
         document.createTextNode(" " + recurLabel(task.recurrence)),
       );
-      const slotEl = li.querySelector(".task__slot");
-      li.insertBefore(recur, slotEl);
+      const tagRef = meta.querySelector(".task__tag");
+      if (tagRef && tagRef.nextSibling) {
+        meta.insertBefore(recur, tagRef.nextSibling);
+      } else {
+        meta.appendChild(recur);
+      }
     }
   } else if (existingRecur) {
     existingRecur.remove();
   }
 
-  const slot = li.querySelector(".task__slot");
-  if (slot) {
-    const existingChip = slot.querySelector(".task__due");
-    if (task.dueAt) {
-      if (existingChip) {
-        existingChip.className = "task__due " + dueClass(task.dueAt);
-        const iconCls =
-          diffDays(task.dueAt) < 0
-            ? "fa-triangle-exclamation"
-            : "fa-calendar-day";
-        existingChip.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
-        existingChip.appendChild(
-          document.createTextNode(" " + formatDue(task.dueAt)),
-        );
-      } else {
-        const due = document.createElement("span");
-        due.className = "task__due " + dueClass(task.dueAt);
-        const iconCls =
-          diffDays(task.dueAt) < 0
-            ? "fa-triangle-exclamation"
-            : "fa-calendar-day";
-        due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
-        due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
-        slot.insertBefore(due, slot.firstChild);
-      }
-    } else if (existingChip) {
-      existingChip.remove();
+  // Due chip
+  const existingDue = meta.querySelector(".task__due");
+  if (task.dueAt) {
+    if (existingDue) {
+      existingDue.className = "task__due " + dueClass(task.dueAt);
+      const iconCls =
+        diffDays(task.dueAt) < 0
+          ? "fa-triangle-exclamation"
+          : "fa-calendar-day";
+      existingDue.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+      existingDue.appendChild(
+        document.createTextNode(" " + formatDue(task.dueAt)),
+      );
+    } else {
+      const due = document.createElement("span");
+      due.className = "task__due " + dueClass(task.dueAt);
+      const iconCls =
+        diffDays(task.dueAt) < 0
+          ? "fa-triangle-exclamation"
+          : "fa-calendar-day";
+      due.innerHTML = `<i class="fas ${iconCls}" aria-hidden="true"></i>`;
+      due.appendChild(document.createTextNode(" " + formatDue(task.dueAt)));
+      meta.appendChild(due);
     }
+  } else if (existingDue) {
+    existingDue.remove();
   }
 
+  // If the meta cluster ended up empty, remove it so it doesn't take space
+  if (meta.children.length === 0) meta.remove();
+
+  // Button aria labels
   const dateBtn = li.querySelector('[data-action="date"]');
   if (dateBtn) {
     dateBtn.setAttribute(
@@ -892,7 +925,7 @@ function startEdit(li) {
   if (!task) return;
 
   const textEl = li.querySelector(".task__text");
-  const slot = li.querySelector(".task__slot");
+  const overlay = li.querySelector(".task__overlay");
   if (!textEl) return;
 
   li.classList.add("is-editing");
@@ -907,7 +940,7 @@ function startEdit(li) {
   input.rows = 1;
 
   textEl.replaceWith(input);
-  if (slot) slot.hidden = true;
+  if (overlay) overlay.hidden = true;
 
   function autoGrow() {
     input.style.height = "auto";
@@ -1103,7 +1136,7 @@ function positionPopover(pop, anchorEl) {
   pop.style.top = top + "px";
 }
 
-/* ---------- Date popover ---------- */
+/* Date popover */
 function openDatePopover(anchorEl, taskId) {
   closePopover();
   const task = tasks.find((t) => t.id === taskId);
@@ -1299,7 +1332,7 @@ function openDatePopover(anchorEl, taskId) {
   requestAnimationFrame(() => dateInput.focus());
 }
 
-/* ---------- Tag popover (assign a tag to a task) ---------- */
+/* Tag popover (assign a tag to a task) */
 function openTagPopover(anchorEl, taskId) {
   closePopover();
   const task = tasks.find((t) => t.id === taskId);
@@ -1555,7 +1588,7 @@ function openTagPopover(anchorEl, taskId) {
   positionPopover(pop, anchorEl);
 }
 
-/* ---------- Tag filter popover (filter the list) ---------- */
+/* Tag filter popover (filter the list) */
 function openTagFilterPopover(anchorEl) {
   closePopover();
 
@@ -1734,6 +1767,7 @@ listEl.addEventListener("click", (e) => {
   if (e.target.closest("[data-action]")) return;
   if (e.target.closest(".task__grip")) return;
   if (e.target.closest(".task__tag")) return;
+  if (e.target.closest(".task__overlay")) return;
 
   selectTask(li.dataset.id, { scroll: false });
   toggleTask(li.dataset.id);
