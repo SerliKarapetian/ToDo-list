@@ -1101,6 +1101,12 @@ a {
   align-items: flex-start;
 }
 
+/* Hide tag & recurrence pills while editing */
+.task.is-editing .task__tag,
+.task.is-editing .task__recur {
+  display: none;
+}
+
 .task__edit {
   flex: 1;
   min-width: 0;
