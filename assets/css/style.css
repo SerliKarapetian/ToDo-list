@@ -831,8 +831,8 @@ a {
   line-height: 1.4;
   word-break: break-word;
   transition:
-    opacity 0.28s var(--ease),
-    filter 0.28s var(--ease);
+    opacity 0.25s var(--ease),
+    filter 0.25s var(--ease);
 }
 
 .task.checked .task__text {
@@ -849,69 +849,23 @@ a {
   font-weight: 600;
 }
 
-/* Overlay — meta + actions float over the text on hover */
-
-.task__overlay {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  z-index: 2;
-  background: var(--surface-soft);
-  /* border: 1px solid var(--line); */
-  border-radius: var(--radius-pill);
-  padding: 4px 6px 4px 8px;
-  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  transform: translateY(-50%) translateX(16px);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 0.25s var(--ease),
-    transform 0.3s var(--ease);
-}
-
-.task:hover .task__overlay,
-.task:focus-within .task__overlay,
-.task.is-selected .task__overlay,
-.task.is-editing .task__overlay {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(-50%) translateX(0);
-}
-
-/* Text dims + blurs behind the overlay */
-.task:hover .task__text,
-.task:focus-within .task__text,
-.task.is-selected .task__text {
-  opacity: 0.3;
-  filter: blur(1.5px);
-}
-
-.task.is-editing .task__text {
-  opacity: 1;
-  filter: none;
-}
-
-.task.checked .task__text {
-  opacity: 0.35;
-}
-.task.checked:hover .task__text,
-.task.checked:focus-within .task__text,
-.task.checked.is-selected .task__text {
-  opacity: 0.2;
-}
-
-/* Meta cluster inside overlay */
+/* Meta cluster — pills, always visible, inline */
 .task__meta {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  transition: opacity 0.25s var(--ease);
+}
+
+.task:hover .task__meta,
+.task:focus-within .task__meta,
+.task.is-selected .task__meta {
+  opacity: 0;
+}
+
+.task.is-editing .task__meta {
+  opacity: 0;
 }
 
 /* Tag chip */
@@ -984,50 +938,6 @@ a {
   border-color: var(--line);
 }
 
-/* Drag handle */
-.task__grip {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 30px;
-  flex-shrink: 0;
-  margin-left: -4px;
-  margin-right: -4px;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  cursor: grab;
-  opacity: 0;
-  transition:
-    opacity 0.2s var(--ease),
-    color 0.2s var(--ease);
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.task:hover .task__grip,
-.task.is-selected .task__grip {
-  opacity: 1;
-}
-
-.task__grip:hover {
-  color: var(--magenta);
-}
-
-.task__grip:active {
-  cursor: grabbing;
-}
-
-/* Action slot */
-.task__slot {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  justify-content: flex-end;
-  height: 30px;
-}
-
 /* Due chip */
 .task__due {
   display: inline-flex;
@@ -1079,7 +989,101 @@ a {
   border-color: var(--line);
 }
 
-/* Task actions */
+/* Overlay — actions float over the pills, hover-revealed.
+   Always absolute, never affects layout → no reflow. */
+.task__overlay {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  /* border: 1px solid var(--line); */
+  border-radius: var(--radius-pill);
+  padding: 4px 6px 4px 8px;
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(4px);
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.22s var(--ease),
+    background-color 0.25s var(--ease),
+    border-color 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+
+.task:hover .task__overlay,
+.task:focus-within .task__overlay,
+.task.is-selected .task__overlay,
+.task.is-editing .task__overlay {
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--surface-soft);
+  border-color: var(--line);
+  box-shadow: 0 10px 26px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* Action slot — collapses to 0 width when hidden */
+.task__slot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  max-width: 0;
+  overflow: hidden;
+  transition: max-width 0.28s var(--ease);
+}
+
+.task:hover .task__slot,
+.task:focus-within .task__slot,
+.task.is-selected .task__slot,
+.task.is-editing .task__slot {
+  max-width: 140px;
+}
+
+/* Drag handle */
+.task__grip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 30px;
+  flex-shrink: 0;
+  margin-left: -4px;
+  margin-right: -4px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  cursor: grab;
+  opacity: 0;
+  transition:
+    opacity 0.2s var(--ease),
+    color 0.2s var(--ease);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.task:hover .task__grip,
+.task.is-selected .task__grip {
+  opacity: 1;
+}
+
+.task__grip:hover {
+  color: var(--magenta);
+}
+
+.task__grip:active {
+  cursor: grabbing;
+}
+
+/* Task action buttons */
 .task__actions {
   display: flex;
   align-items: center;

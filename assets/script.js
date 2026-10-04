@@ -311,7 +311,17 @@ function canReorder() {
   return filter === "all" && !query && !activeTag;
 }
 
-/* Row builder */
+/* ------------------------------------------------------------------
+   Row builder
+   DOM:
+     <li class="task">
+       [grip] [check] [text]
+       <div class="task__meta">…pills…</div>
+       <div class="task__overlay">
+         <div class="task__slot">…actions…</div>
+       </div>
+     </li>
+   ------------------------------------------------------------------ */
 function buildTaskRow(task, tokens) {
   const li = document.createElement("li");
   li.className = "task";
@@ -339,11 +349,7 @@ function buildTaskRow(task, tokens) {
   text.className = "task__text";
   text.appendChild(highlight(task.text, tokens));
 
-  // Overlay wrapper (meta + actions)
-  const overlay = document.createElement("div");
-  overlay.className = "task__overlay";
-
-  // Meta cluster: tag + recurrence + due
+  // Meta cluster (pills, always visible, inline)
   const meta = document.createElement("div");
   meta.className = "task__meta";
 
@@ -378,9 +384,10 @@ function buildTaskRow(task, tokens) {
     meta.appendChild(due);
   }
 
-  if (meta.children.length) overlay.appendChild(meta);
+  // Overlay (actions, absolutely positioned, hover-revealed)
+  const overlay = document.createElement("div");
+  overlay.className = "task__overlay";
 
-  // Action slot
   const slot = document.createElement("div");
   slot.className = "task__slot";
 
@@ -447,6 +454,7 @@ function buildTaskRow(task, tokens) {
   overlay.appendChild(slot);
 
   li.append(check, text);
+  if (meta.children.length) li.appendChild(meta);
   li.appendChild(overlay);
   return li;
 }
@@ -463,21 +471,14 @@ function updateTaskRow(li, task, tokens) {
     textEl.appendChild(highlight(task.text, tokens));
   }
 
-  // Overlay wrapper
-  let overlay = li.querySelector(".task__overlay");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.className = "task__overlay";
-    li.appendChild(overlay);
-  }
-
-  // Meta cluster inside overlay
-  let meta = overlay.querySelector(".task__meta");
+  // Meta cluster (direct child of <li>)
+  let meta = li.querySelector(":scope > .task__meta");
   if (!meta) {
     meta = document.createElement("div");
     meta.className = "task__meta";
-    const slotRef = overlay.querySelector(".task__slot");
-    overlay.insertBefore(meta, slotRef);
+    const overlayRef = li.querySelector(".task__overlay");
+    if (overlayRef) li.insertBefore(meta, overlayRef);
+    else li.appendChild(meta);
   }
 
   // Tag
@@ -926,6 +927,7 @@ function startEdit(li) {
 
   const textEl = li.querySelector(".task__text");
   const overlay = li.querySelector(".task__overlay");
+  const metaEl = li.querySelector(":scope > .task__meta");
   if (!textEl) return;
 
   li.classList.add("is-editing");
@@ -941,6 +943,7 @@ function startEdit(li) {
 
   textEl.replaceWith(input);
   if (overlay) overlay.hidden = true;
+  if (metaEl) metaEl.hidden = true;
 
   function autoGrow() {
     input.style.height = "auto";
