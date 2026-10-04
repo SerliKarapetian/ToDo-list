@@ -405,7 +405,7 @@ a {
   background: var(--surface-inset);
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-pill);
-  padding: 6px 6px 6px 18px;
+  padding: 4px 6px 4px 16px;
   transition: var(--transition);
   margin-bottom: 12px;
   position: relative;
@@ -435,7 +435,7 @@ a {
   background: transparent;
   padding: 12px 0;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   color: var(--text);
   min-width: 0;
 }
@@ -445,8 +445,8 @@ a {
 }
 
 #add-btn {
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--magenta);
   color: #fff;
