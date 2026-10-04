@@ -1381,6 +1381,7 @@ function openTagPopover(anchorEl, taskId) {
       row.setAttribute("role", "menuitemradio");
       row.setAttribute("aria-checked", String(task.tag === t.id));
       row.dataset.color = t.color;
+      row.title = t.label;
 
       row.innerHTML = `
         <span class="tag-popover__check" aria-hidden="true">
@@ -1643,6 +1644,7 @@ function openTagFilterPopover(anchorEl) {
       row.setAttribute("role", "menuitemradio");
       row.setAttribute("aria-checked", String(activeTag === t.id));
       row.dataset.color = t.color;
+      row.title = t.label;
       row.innerHTML = `
         <span class="tag-popover__check" aria-hidden="true">
           <i class="fas fa-check"></i>
